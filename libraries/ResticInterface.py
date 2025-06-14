@@ -12,6 +12,7 @@ class ResticInterface:
     self.keep_daily = keep_daily
     self.keep_weekly = keep_weekly
     self.process = None
+    self._lock = asyncio.Lock()
     self.restic_binary_path = "./bin/restic/restic.exe" if os.name == "nt" else "./bin/restic/restic"
     self.rclone_binary_path = "./bin/rclone/rclone.exe" if os.name == "nt" else "./bin/rclone/rclone"
     self.rclone_config_path = os.getcwd() + "/configs/rclone.conf"
@@ -22,16 +23,16 @@ class ResticInterface:
     async with self._lock:
       self.process = SubprocessHandler([self.restic_binary_path, "-r", f"rclone:{self.endpoint}:{remote_path}", "--option", f"rclone.program={self.rclone_binary_path}", "--json", "backup", local_path], self.env)
       if callback_function is not None:
-        process.register_listener(callback_function)
-      await process.start()
+        self.process.register_listener(callback_function)
+      self.process.start()
 
   async def restoreRepo(self, remote_path:str, local_path:str, callback_function=None, snapshot:str="latest"):
     # Downloads/restores a certain file/folder (specified as path) from a remote repository (can't be used simultaniously with backupRepo())
     async with self._lock:
       self.process = SubprocessHandler([self.restic_binary_path, "-r", f"rclone:{self.endpoint}:{remote_path}", "--option", f"rclone.program={self.rclone_binary_path}", "--json", "restore", snapshot, "--target", local_path], self.env)
       if callback_function is not None:
-        process.register_listener(callback_function)
-      await process.start()
+        self.process.register_listener(callback_function)
+      self.process.start()
 
   async def wait_until_done(self):
     # use this function in combination with await, to wait till the program is done.
