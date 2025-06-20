@@ -15,3 +15,5 @@ Servers/testServer/test1
 logs/log.log
 libraries/__pycache__/DownloadHandler.cpython-310.pyc
 libraries/__pycache__/LogHelper.cpython-310.pyc
+tests.py
+__pycache__
