@@ -2,19 +2,59 @@ import uvicorn
 import webbrowser
 import asyncio
 import threading
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from libraries.LogHelper import LogHelper
 from libraries.DownloadHandler import DownloadHandler
+from libraries.ResticInterface import ResticInterface
+from libraries.SubprocessHandler import SubprocessHandler
 
 app = FastAPI()
 logger = LogHelper()
-DownloadHandler().ensure_binaries()
+websockets = {}
 
 @app.get("/")
 async def index():
-  return {"message": "Hello World"} 
+  return {"message": "Hello World"}
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    ws_id = id(websocket)
+    websockets[ws_id] = websocket
+
+    try:
+      while True:
+        try:
+          await asyncio.wait_for(websocket.receive_text(), timeout=30)
+        except asyncio.TimeoutError:
+          continue
+    except Exception:
+      if ws_id in websockets:
+        del websockets[ws_id]
+        print("Disconnected and removed!")
+
+
+
+@app.get("/test")
+async def ping():
+  async def forward(line):
+    for ws in list(websockets.values()):
+      try:
+        await ws.send_json({"output": line})
+      except Exception:
+        print("aids")
+
+  sph = SubprocessHandler(["./ping", "google.com", "-i", "0.1"])
+  sph.register_listener(forward)
+  sph.start()
+  return 1
+
+@app.get("/endpoints")
+async def endpoints():
+  return ResticInterface.getEndpointsFromConfig()
 
 def open_browser_later():
   asyncio.run(_wait_and_open())
@@ -37,4 +77,5 @@ async def _wait_and_open():
 if __name__ == "__main__":
   threading.Thread(target=open_browser_later, daemon=True).start()
   asyncio.run(logger.passLog(2, "Starting Uvicorn server..."))
+  DownloadHandler().ensure_binaries_sync()
   uvicorn.run(app, host="127.0.0.1", port=8000)
