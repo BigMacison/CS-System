@@ -24,6 +24,7 @@ class DownloadHandler:
   async def ensure_binaries(self):
     await self.update_rclone()
     await self.update_restic()
+    await self.update_playit()
 
   async def update_rclone(self):
     await self.logger.passLog(2, "Checking rclone...")
@@ -51,6 +52,19 @@ class DownloadHandler:
     download_url = self._get_restic_download_url(version)
     await self._download_binary(download_url, binary_path)
 
+  async def update_playit(self):
+    await self.logger.passLog(2, "Checking playit...")
+    version = self._get_latest_github_tag("playit-cloud", "playit-agent")
+    target_dir = os.path.join(self.BASE_DIR, "playit")
+    binary_path = os.path.join(target_dir, "playit.exe" if self.system == "windows" else "playit")
+
+    if self._is_up_to_date(binary_path, version):
+      await self.logger.passLog(2, "playit is up to date.")
+      return
+
+    download_url = self._get_playit_download_url(version)
+    await self._download_binary(download_url, binary_path)  
+
   def _get_latest_github_tag(self, org, repo) -> str:
     url = f"https://api.github.com/repos/{org}/{repo}/releases/latest"
     req = urllib.request.Request(url, headers=self.HEADERS)
@@ -77,6 +91,11 @@ class DownloadHandler:
     file_name = f"restic_{version}_{self.system}_{self.arch}.zip" if self.system == "windows" \
       else f"restic_{version}_{self.system}_{self.arch}.bz2"
     return f"https://github.com/restic/restic/releases/download/v{version}/{file_name}"
+
+  def _get_playit_download_url(self, version: str) -> str:
+    file_name = f"playit-{self.system}-x86_64-signed.exe" if self.system == "windows" \
+      else f"playit-{self.system}-{self.arch}"
+    return f"https://github.com/playit-cloud/playit-agent/releases/download/v{version}/{file_name}"
 
   async def _download_and_extract(self, url: str, output_binary_path: str, binary_name: str):
     await self.logger.passLog(2, f"Downloading from {url}")
@@ -113,6 +132,8 @@ class DownloadHandler:
             if "restic" in file and (file.endswith("exe") or not file.endswith("/")):
               zip_ref.extract(file, os.path.dirname(output_binary_path))
               shutil.move(os.path.join(os.path.dirname(output_binary_path), file), output_binary_path)
+      else:
+            shutil.copyfile(tmp_file.name, output_binary_path)
 
     os.chmod(output_binary_path, os.stat(output_binary_path).st_mode | stat.S_IEXEC)
-    await self.logger.passLog(2, "restic updated.")
+    await self.logger.passLog(2, f"{os.path.basename(output_binary_path)} updated.")
