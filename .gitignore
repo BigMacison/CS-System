@@ -15,3 +15,11 @@ Servers/testServer/test1
 logs/log.log
 libraries/__pycache__/DownloadHandler.cpython-310.pyc
 libraries/__pycache__/LogHelper.cpython-310.pyc
+libraries/__pycache__/__init__.cpython-311.pyc
+libraries/__pycache__/AbstractProcessRunHandler.cpython-311.pyc
+libraries/__pycache__/DownloadHandler.cpython-311.pyc
+libraries/__pycache__/LogHelper.cpython-311.pyc
+libraries/__pycache__/ResticInterface.cpython-311.pyc
+libraries/__pycache__/SubprocessHandler.cpython-311.pyc
+Servers/Servers/testServer/awdaweadw
+Servers/Servers/testServer/test1
