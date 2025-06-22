@@ -15,6 +15,15 @@ app = FastAPI()
 logger = LogHelper()
 websockets = {}
 
+
+async def forward_to_websockets(json):
+  for ws in list(websockets.values()):
+    try:
+      await ws.send_json(json)
+    except Exception:
+      pass
+
+
 @app.get("/")
 async def index():
   return {"message": "Hello World"}
@@ -40,15 +49,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/test")
 async def ping():
-  async def forward(line):
-    for ws in list(websockets.values()):
-      try:
-        await ws.send_json({"output": line})
-      except Exception:
-        print("aids")
-
   sph = SubprocessHandler(["./ping", "google.com", "-i", "0.1"])
-  sph.register_listener(forward)
+  sph.register_listener(forward_to_websockets)
   sph.start()
   return 1
 
