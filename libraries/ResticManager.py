@@ -5,7 +5,7 @@ import json
 from .SubprocessHandler import SubprocessHandler
 from .LogHelper import LogHelper
 
-class ResticInterface:
+class ResticManager:
   def __init__(self, endpoint: str, password: str, keep_hourly: int = 0, keep_daily: int = 0, keep_weekly: int = 0):
     self.endpoint = endpoint
     self.password = password
