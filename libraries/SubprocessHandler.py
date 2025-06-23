@@ -14,6 +14,7 @@ class SubprocessHandler(AbstractProcessRunHandler):
     self._output_thread = None
     self._running = False
     self._input_queue = queue.Queue()
+    self.loop = asyncio.get_event_loop()
 
   def register_listener(self, callback):
     # Add function that gets called every time a new line appears.
@@ -27,7 +28,7 @@ class SubprocessHandler(AbstractProcessRunHandler):
         for listener in self.listeners:
           result = listener(decoded)
           if inspect.isawaitable(result):
-            asyncio.run_coroutine_threadsafe(result, asyncio.get_event_loop())
+            asyncio.run_coroutine_threadsafe(result, self.loop)
 
   def _write_input(self):
     # Blocking stdin writer loop running in a separate thread.
