@@ -45,6 +45,15 @@ class ResticManager:
     await self.process.wait_until_done()
     await self.logger.passLog(2, "Process completed.")
 
+  def deleteRemotePath(self, remote_path: str):
+    asyncio.create_task(self.logger.passLog(2, f"Removing remote path '{remote_path}'"))
+    try:
+      SubprocessHandler.run_once([self.rclone_binary_path, "purge", f"{self.endpoint}:{remote_path}"], self.env)
+      asyncio.create_task(self.logger.passLog(2, f"Successfully removed remote path '{remote_path}'"))
+    except Exception as e:
+      asyncio.create_task(self.logger.passLog(0, f"Failed to remove remote path '{remote_path}': {str(e)}"))
+
+
   def createRemoteFolder(self, remote_path: str):
     # Creates a folder on the remote endpoint at the specified path
     asyncio.create_task(self.logger.passLog(2, f"Creating folder at remote path '{remote_path}'"))

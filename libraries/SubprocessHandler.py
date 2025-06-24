@@ -80,7 +80,9 @@ class SubprocessHandler(AbstractProcessRunHandler):
     if self.process:
       while self.process.poll() is None:
         await asyncio.sleep(0.1)
-
+      self._running = False
+      self.process = None
+      
   @staticmethod
   def run_once(command: list[str], env: dict = None) -> str:
     environment = os.environ.copy()
