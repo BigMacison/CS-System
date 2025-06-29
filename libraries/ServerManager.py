@@ -83,11 +83,19 @@ class ServerManager:
   async def _download_server(self, callback_function=None, snapshot: str="latest"):
     await self.logger.passLog(2, f"Downloading server data for '{self.server_name}', snapshot: {snapshot}.")
     os.makedirs(f"./Servers/{self.server_name}", exist_ok=True)
-    await self.restic.restoreRepo(f"/cssystem/{self.server_name}/repo", ".", callback_function, f"{os.getcwd()}/Servers/{self.server_name}", snapshot)
+
+    async def convert(line):
+      callback_function({"restic": line})
+
+    await self.restic.restoreRepo(f"/cssystem/{self.server_name}/repo", ".", convert, f"{os.getcwd()}/Servers/{self.server_name}", snapshot)
 
   async def _upload_server(self, callback_function=None, snapshot: str="latest"):
     await self.logger.passLog(2, f"Uploading server data for '{self.server_name}'.")
-    await self.restic.backupRepo(".", f"/cssystem/{self.server_name}/repo", callback_function, f"{os.getcwd()}/Servers/{self.server_name}")
+
+    async def convert(line):
+      callback_function({"restic": line})
+
+    await self.restic.backupRepo(".", f"/cssystem/{self.server_name}/repo", convert, f"{os.getcwd()}/Servers/{self.server_name}")
 
   async def wait_till_restic_done(self):
     await self.restic.wait_until_done()
@@ -179,7 +187,11 @@ class ServerManager:
       await self.set_newest_host()
       start_command = server_config["start_command_windows"] if os.name == "nt" else server_config["start_command_linux"]
       self.server_process = SubprocessHandler(start_command.split(), server_config["env"])
-      self.server_process.register_listener(callback_function)
+
+      async def convert(line):
+        callback_function({"console": line})
+
+      self.server_process.register_listener(convert)
       self.server_process.start()
 
       # TODO: Tunnel port here when tunneling class is ready
