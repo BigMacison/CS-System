@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Server Control Panel</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: monospace;
+      background-color: #1e1e1e;
+      color: #00ff00;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .terminal {
+      flex: 1;
+      background-color: black;
+      padding: 1rem;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-size: 0.9rem;
+    }
+
+    .controls {
+      background-color: #2a2a2a;
+      padding: 1rem;
+      overflow-y: auto;
+      max-height: 300px;
+    }
+
+    .endpoint {
+      margin-bottom: 1rem;
+    }
+
+    input, button {
+      margin: 0.2rem;
+      padding: 0.3rem 0.6rem;
+      background-color: #1e1e1e;
+      border: 1px solid #00ff00;
+      color: #00ff00;
+      border-radius: 4px;
+    }
+
+    button:hover {
+      background-color: #3a3a3a;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="controls" id="controls">
+    <!-- Dynamically generated buttons & inputs -->
+  </div>
+
+  <div class="terminal" id="terminal">
+    Connecting to WebSocket...
+  </div>
+
+  <script>
+    const terminal = document.getElementById("terminal");
+
+    function logToTerminal(message) {
+      terminal.textContent += "\n" + message;
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${protocol}://${location.host}/ws`);
+    ws.onopen = () => logToTerminal("[WebSocket connected]");
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        logToTerminal(JSON.stringify(data, null, 2));
+      } catch {
+        logToTerminal(event.data);
+      }
+    };
+    ws.onclose = () => logToTerminal("[WebSocket disconnected]");
+
+    const endpoints = [
+      { method: "GET", path: "/config", label: "Get Config" },
+      { method: "POST", path: "/config", label: "Update Config", inputs: ["client_id", "endpoint", "server_name"] },
+
+      { method: "POST", path: "/server/create", label: "Create Server", inputs: [
+        "server_name", "endpoint", "start_cmd_win", "start_cmd_linux", "stop_cmd", "port", "env"
+      ]},
+      { method: "POST", path: "/server/delete", label: "Delete Server", inputs: ["server_name", "endpoint"] },
+
+      { method: "POST", path: "/server/start", label: "Start Server" },
+      { method: "POST", path: "/server/stop", label: "Stop Server" },
+      { method: "POST", path: "/server/newest_host", label: "Get Newest Host" },
+      { method: "POST", path: "/server/set_newest_host", label: "Set Newest Host" },
+      { method: "POST", path: "/server/force_set_newest_host", label: "Force Set Newest Host" },
+      { method: "POST", path: "/server/is_newest", label: "Is Client Newest?" },
+      { method: "POST", path: "/server/did_upload", label: "Did Upload?" },
+      { method: "POST", path: "/server/config", label: "Get Server Config" },
+
+      { method: "GET", path: "/endpoints", label: "List Endpoints" },
+      { method: "GET", path: "/servers", label: "List Servers", inputs: ["endpoint"] },
+    ];
+
+    function createControl(endpoint) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "endpoint";
+
+      const btn = document.createElement("button");
+      btn.textContent = endpoint.label;
+
+      const inputFields = {};
+      if (endpoint.inputs) {
+        endpoint.inputs.forEach(name => {
+          const input = document.createElement("input");
+          input.placeholder = name;
+          input.name = name;
+          inputFields[name] = input;
+          wrapper.appendChild(input);
+        });
+      }
+
+      btn.onclick = async () => {
+        let url = endpoint.path;
+        let options = { method: endpoint.method };
+
+        if (endpoint.inputs) {
+          const data = {};
+          for (const [key, input] of Object.entries(inputFields)) {
+            if (key === "env" && url === "/server/create") {
+              try {
+                data.env = input.value ? JSON.parse(input.value) : {};
+              } catch (e) {
+                logToTerminal(`❌ Invalid JSON in "env" field.`);
+                return;
+              }
+            } else if (key === "port") {
+              data[key] = parseInt(input.value) || 8080;
+            } else {
+              data[key] = input.value;
+            }
+          }
+
+          if (endpoint.method === "GET") {
+            const params = new URLSearchParams(data).toString();
+            url += `?${params}`;
+          } else {
+            if (url === "/config") {
+              url += `?${new URLSearchParams(data).toString()}`;
+            } else {
+              options.headers = { "Content-Type": "application/json" };
+              options.body = JSON.stringify(data);
+            }
+          }
+        }
+
+        try {
+          const res = await fetch(url, options);
+          const resText = await res.text();
+          logToTerminal(`[${endpoint.method}] ${url} → ${res.status}`);
+          logToTerminal(resText);
+        } catch (err) {
+          logToTerminal(`[ERROR] ${err}`);
+        }
+      };
+
+      wrapper.appendChild(btn);
+      return wrapper;
+    }
+
+    const controls = document.getElementById("controls");
+    endpoints.forEach(endpoint => {
+      controls.appendChild(createControl(endpoint));
+    });
+  </script>
+
+</body>
+</html>

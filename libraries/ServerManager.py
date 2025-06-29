@@ -85,7 +85,7 @@ class ServerManager:
     os.makedirs(f"./Servers/{self.server_name}", exist_ok=True)
 
     async def convert(line):
-      callback_function({"restic": line})
+      await callback_function({"restic": line})
 
     await self.restic.restoreRepo(f"/cssystem/{self.server_name}/repo", ".", convert, f"{os.getcwd()}/Servers/{self.server_name}", snapshot)
 
@@ -93,7 +93,7 @@ class ServerManager:
     await self.logger.passLog(2, f"Uploading server data for '{self.server_name}'.")
 
     async def convert(line):
-      callback_function({"restic": line})
+      await callback_function({"restic": line})
 
     await self.restic.backupRepo(".", f"/cssystem/{self.server_name}/repo", convert, f"{os.getcwd()}/Servers/{self.server_name}")
 
@@ -189,7 +189,7 @@ class ServerManager:
       self.server_process = SubprocessHandler(start_command.split(), server_config["env"])
 
       async def convert(line):
-        callback_function({"console": line})
+        await callback_function({"console": line})
 
       self.server_process.register_listener(convert)
       self.server_process.start()
@@ -198,14 +198,14 @@ class ServerManager:
 
   async def stop_server(self, callback_function=None):
     server_config = await self.get_server_config()
-    if not self.server_process is None:
+    try:
       if server_config["stop_command"] == "":
         await self.server_process.stop()
       else:
         await self.server_process.send_input(server_config["stop_command"])
         await self.server_process.wait_until_done()
-    else:
-      await self.logger.passLog(0, "Process is None")
+    except Exception:
+      await self.logger.passLog(0, "Process stop exception")
     result = callback_function({"info": "server stopped"})
 
     if inspect.isawaitable(result):
