@@ -13,27 +13,27 @@ class ResticManager:
     self.keep_weekly = keep_weekly
     self.process = None
     self._lock = asyncio.Lock()
-    self.restic_binary_path = "./bin/restic/restic.exe" if os.name == "nt" else "./bin/restic/restic"
-    self.rclone_binary_path = "./bin/rclone/rclone.exe" if os.name == "nt" else "./bin/rclone/rclone"
+    self.restic_binary_path = f"{os.getcwd()}/bin/restic/restic.exe" if os.name == "nt" else f"{os.getcwd()}/bin/restic/restic"
+    self.rclone_binary_path = f"{os.getcwd()}/bin/rclone/rclone.exe" if os.name == "nt" else f"{os.getcwd()}/bin/rclone/rclone"
     self.rclone_config_path = os.getcwd() + "/configs/rclone.conf"
     self.env = {"RCLONE_CONFIG": self.rclone_config_path}
     self.logger = LogHelper()
   
-  async def backupRepo(self, local_path: str, remote_path: str, callback_function=None):
+  async def backupRepo(self, local_path: str, remote_path: str, callback_function=None, cwd: str = os.getcwd()):
     # Uploads/backups a certain file/folder (specified as path) into a remote repository (can't be used simultaniously with restoreRepo())
     await self.logger.passLog(2, f"Starting backup from '{local_path}' to '{remote_path}'")
     async with self._lock:
-      self.process = SubprocessHandler([self.restic_binary_path, "-r", f"rclone:{self.endpoint}:{remote_path}", "--insecure-no-password", "--option", f"rclone.program={self.rclone_binary_path}", "--json", "backup", local_path], self.env)
+      self.process = SubprocessHandler([self.restic_binary_path, "-r", f"rclone:{self.endpoint}:{remote_path}", "--insecure-no-password", "--option", f"rclone.program={self.rclone_binary_path}", "--json", "backup", local_path], self.env, cwd)
       if callback_function is not None:
         self.process.register_listener(callback_function)
       self.process.start()
       await self.logger.passLog(2, f"Backup process started for '{local_path}'")
 
-  async def restoreRepo(self, remote_path:str, local_path:str, callback_function=None, snapshot:str="latest"):
+  async def restoreRepo(self, remote_path: str, local_path: str, callback_function=None, cwd: str = os.getcwd(), snapshot: str="latest"):
     # Downloads/restores a certain file/folder (specified as path) from a remote repository (can't be used simultaniously with backupRepo())
     await self.logger.passLog(2, f"Starting restore from '{remote_path}' to '{local_path}', snapshot='{snapshot}'")
     async with self._lock:
-      self.process = SubprocessHandler([self.restic_binary_path, "-r", f"rclone:{self.endpoint}:{remote_path}", "--insecure-no-password", "--option", f"rclone.program={self.rclone_binary_path}", "--json", "restore", snapshot, "--target", local_path], self.env)
+      self.process = SubprocessHandler([self.restic_binary_path, "-r", f"rclone:{self.endpoint}:{remote_path}", "--insecure-no-password", "--option", f"rclone.program={self.rclone_binary_path}", "--json", "restore", snapshot, "--target", local_path], self.env, cwd)
       if callback_function is not None:
         self.process.register_listener(callback_function)
       self.process.start()
