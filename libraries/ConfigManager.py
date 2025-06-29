@@ -1,5 +1,6 @@
 import os
 import random
+import json
 
 class ConfigManager:
   
@@ -12,14 +13,14 @@ class ConfigManager:
         random_number_string = ''.join(random.choices('0123456789', k=30))
         f.write(json.dumps({"client_id": random_number_string, "endpoint": "", "server_name": ""}))
 
-    config_json = json_loads(open("./configs/client_config.json", "r"))
+    config_json = json.loads(open("./configs/client_config.json", "r").read())
     self.client_id = config_json["client_id"]
     self.endpoint = config_json["endpoint"]
     self.server_name = config_json["server_name"]
 
   def _save_config(self):
     with open("./configs/client_config.json", "w") as f:
-      f.write(json.dumps({"client_id": self.client_ident_id, "endpoint": self.endpoint, "server_name": self.server_name}))
+      f.write(json.dumps({"client_id": self.client_id, "endpoint": self.endpoint, "server_name": self.server_name}))
 
   def getClientId(self):
     return self.client_id
