@@ -3,12 +3,13 @@ from abc import ABC, abstractmethod
 import os
 
 class AbstractProcessRunHandler(ABC):
-  def __init__(self, command: list, env:dict=None):
+  def __init__(self, command: list, env: dict = None, cwd: str = os.getcwd()):
     self.command = command
     self.process = None
     self.environment = os.environ.copy()
     if env is not None:
       self.environment.update(env)
+    self.cwd = cwd
 
   @abstractmethod
   def register_listener(self, callback):

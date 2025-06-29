@@ -7,8 +7,8 @@ import inspect
 import asyncio
 
 class SubprocessHandler(AbstractProcessRunHandler):
-  def __init__(self, command: list, env: dict = None):
-    super().__init__(command, env)
+  def __init__(self, command: list, env: dict = None, cwd: str = os.getcwd()):
+    super().__init__(command, env, cwd)
     self.listeners = []
     self.process = None
     self._output_thread = None
@@ -52,6 +52,7 @@ class SubprocessHandler(AbstractProcessRunHandler):
 
     self.process = subprocess.Popen(
       self.command,
+      cwd=self.cwd,
       stdout=subprocess.PIPE,
       stderr=subprocess.STDOUT,
       stdin=subprocess.PIPE,
@@ -80,7 +81,9 @@ class SubprocessHandler(AbstractProcessRunHandler):
     if self.process:
       while self.process.poll() is None:
         await asyncio.sleep(0.1)
-
+      self._running = False
+      self.process = None
+      
   @staticmethod
   def run_once(command: list[str], env: dict = None) -> str:
     environment = os.environ.copy()

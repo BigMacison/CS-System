@@ -17,3 +17,9 @@ libraries/__pycache__/DownloadHandler.cpython-310.pyc
 libraries/__pycache__/LogHelper.cpython-310.pyc
 tests.py
 __pycache__
+configs/
+bin/
+logs/
+libraries/__pycache__/
+Servers/
+libraries/PlayitManager.py
