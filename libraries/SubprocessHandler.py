@@ -7,8 +7,8 @@ import inspect
 import asyncio
 
 class SubprocessHandler(AbstractProcessRunHandler):
-  def __init__(self, command: list, env: dict = None):
-    super().__init__(command, env)
+  def __init__(self, command: list, env: dict = None, cwd: str = os.getcwd()):
+    super().__init__(command, env, cwd)
     self.listeners = []
     self.process = None
     self._output_thread = None
@@ -52,6 +52,7 @@ class SubprocessHandler(AbstractProcessRunHandler):
 
     self.process = subprocess.Popen(
       self.command,
+      cwd=self.cwd,
       stdout=subprocess.PIPE,
       stderr=subprocess.STDOUT,
       stdin=subprocess.PIPE,
