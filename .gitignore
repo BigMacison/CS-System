@@ -3,3 +3,5 @@ bin/
 logs/
 libraries/__pycache__/
 Servers/
+cache/
+testing_files/
