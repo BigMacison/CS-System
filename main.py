@@ -41,15 +41,12 @@ class ServerIdentifier(BaseModel):
 
 # ---------- WEBSITE ----------
 # Serve static files (CSS, JS) from /static
-app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+#app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
 # Serve the HTML page at /
 @app.get("/", response_class=FileResponse)
 async def index():
     return "frontend/index.html"
-#@app.get("/")
-#async def index():
-#  return {"message": "Placeholder"}
 
 # ---------- WEBSOCKETS ----------
 
