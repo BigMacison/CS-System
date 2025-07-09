@@ -100,6 +100,12 @@ class ServerManager:
   async def wait_till_restic_done(self):
     await self.restic.wait_until_done()
 
+  async def set_endpoint(self, endpoint):
+    await self.restic.set_endpoint(endpoint)
+
+  async def set_server_name(self, server_name):
+    self.server_name = server_name
+
   async def create_server(self, start_command_windows: str, start_command_linux: str, stop_command: str, forward_port: int, env: dict):
     os.makedirs(f"./Servers/{self.server_name}", exist_ok=True)
     
@@ -186,6 +192,7 @@ class ServerManager:
     if await self.did_newest_host_upload():
       await self.set_newest_host()
       start_command = server_config["start_command_windows"] if os.name == "nt" else server_config["start_command_linux"]
+      print(start_command)
       self.server_process = SubprocessHandler(start_command.split(), server_config["env"])
 
       async def convert(line):

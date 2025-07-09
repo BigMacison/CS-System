@@ -33,11 +33,15 @@ class ResticManager:
     # Downloads/restores a certain file/folder (specified as path) from a remote repository (can't be used simultaniously with backupRepo())
     await self.logger.passLog(2, f"Starting restore from '{remote_path}' to '{local_path}', snapshot='{snapshot}'")
     async with self._lock:
+      print([self.restic_binary_path, "-r", f"rclone:{self.endpoint}:{remote_path}", "--insecure-no-password", "--option", f"rclone.program={self.rclone_binary_path}", "--json", "restore", snapshot, "--target", local_path])
       self.process = SubprocessHandler([self.restic_binary_path, "-r", f"rclone:{self.endpoint}:{remote_path}", "--insecure-no-password", "--option", f"rclone.program={self.rclone_binary_path}", "--json", "restore", snapshot, "--target", local_path], self.env, cwd)
       if callback_function is not None:
         self.process.register_listener(callback_function)
       self.process.start()
       await self.logger.passLog(2, f"Restore process started for '{remote_path}'")
+
+  async def set_endpoint(self, endpoint):
+    self.endpoint = endpoint
 
   async def wait_until_done(self):
     # use this function in combination with await, to wait till the program is done.

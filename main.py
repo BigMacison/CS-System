@@ -97,7 +97,8 @@ async def update_config(client_id: str, endpoint: str, server_name: str):
   cm.setClientId(client_id)
   cm.setEndpoint(endpoint)
   cm.setServerName(server_name)
-  sm = ServerManager(config.getEndpoint(), config.getServerName())
+  await sm.set_endpoint(endpoint)
+  await sm.set_server_name(server_name)
   return {"status": "updated"}
 
 # ---------- SERVER ENDPOINTS ----------
@@ -185,7 +186,7 @@ async def _wait_and_open():
 
 
 if __name__ == "__main__":
+  DownloadHandler().ensure_binaries_sync()
   threading.Thread(target=open_browser_later, daemon=True).start()
   asyncio.run(logger.passLog(2, "Starting Uvicorn server..."))
-  DownloadHandler().ensure_binaries_sync()
   uvicorn.run(app, host="0.0.0.0", port=8000)
