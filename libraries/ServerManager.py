@@ -85,7 +85,7 @@ class ServerManager:
     os.makedirs(f"./Servers/{self.server_name}", exist_ok=True)
 
     async def convert(line):
-      await callback_function({"restic": line})
+      await callback_function({"restic": json.loads(line)})
 
     await self.restic.restoreRepo(f"/cssystem/{self.server_name}/repo", ".", convert, f"{os.getcwd()}/Servers/{self.server_name}", snapshot)
 
@@ -93,7 +93,7 @@ class ServerManager:
     await self.logger.passLog(2, f"Uploading server data for '{self.server_name}'.")
 
     async def convert(line):
-      await callback_function({"restic": line})
+      await callback_function({"restic": json.loads(line)})
 
     await self.restic.backupRepo(".", f"/cssystem/{self.server_name}/repo", convert, f"{os.getcwd()}/Servers/{self.server_name}")
 
@@ -124,6 +124,9 @@ class ServerManager:
     self.restic.uploadPath("./cache/server_config.json", f"/cssystem/{self.server_name}/")
     await self._edit_server_list("append")
     
+  async def read_total_output(self):
+    return await self.server_process.read_total_output()
+
   async def delete_server(self):
     await self.logger.passLog(2, f"Deleting server '{self.server_name}'.")
     self.restic.deleteRemotePath(f"/cssystem/{self.server_name}")
@@ -192,7 +195,6 @@ class ServerManager:
     if await self.did_newest_host_upload():
       await self.set_newest_host()
       start_command = server_config["start_command_windows"] if os.name == "nt" else server_config["start_command_linux"]
-      print(start_command)
       self.server_process = SubprocessHandler(start_command.split(), server_config["env"])
 
       async def convert(line):
@@ -213,6 +215,7 @@ class ServerManager:
         await self.server_process.wait_until_done()
     except Exception:
       await self.logger.passLog(0, "Process stop exception")
+    self.server_process = None
     result = callback_function({"info": "server stopped"})
 
     if inspect.isawaitable(result):
