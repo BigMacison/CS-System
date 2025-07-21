@@ -66,6 +66,12 @@ async def websocket_endpoint(websocket: WebSocket):
   websockets[ws_id] = websocket
 
   try:
+    output_str = await sm.read_total_output()
+    await websocket.send_json({"console": output_str.splitlines()})
+  except Exception:
+    pass
+
+  try:
     while True:
       try:
         await asyncio.wait_for(websocket.receive_text(), timeout=30)
@@ -119,23 +125,26 @@ async def delete_server(data: ServerIdentifier):
 
 @app.post("/server/start")
 async def start_server():
-  await sm.start_server(forward_to_websockets)
-  return {"status": "server_started"}
+  if await sm.did_newest_host_upload():
+    await sm.start_server(forward_to_websockets)
+    return {"status": "server_started"}
+  else:
+    return {"error": "server_not_uploaded"}
 
 @app.post("/server/stop")
 async def stop_server():
   await sm.stop_server(forward_to_websockets)
   return {"status": "server_stopped"}
 
+@app.post("/server/read")
+async def read_total_output():
+  output_str = await sm.read_total_output()
+  return output_str.splitlines()
+
 @app.post("/server/newest_host")
 async def get_newest_host():
   host = await sm.get_newest_host()
   return {"newest_host": host}
-
-@app.post("/server/set_newest_host")
-async def set_newest_host():
-  await sm.set_newest_host_status()
-  return {"status": "set"}
 
 @app.post("/server/force_set_newest_host")
 async def force_set_newest_host():
