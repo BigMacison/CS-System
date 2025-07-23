@@ -21,10 +21,14 @@ class DownloadHandler:
     self.arch = "amd64"  # standard architecture as specified
     self.logger = LogHelper()
 
-  async def ensure_binaries(self):
+  async def ensure_binaries_async(self):
     await self.update_rclone()
     await self.update_restic()
     await self.update_playit()
+
+  def ensure_binaries_sync(self):
+    asyncio.run(self.update_rclone())
+    asyncio.run(self.update_restic())
 
   async def update_rclone(self):
     await self.logger.passLog(2, "Checking rclone...")

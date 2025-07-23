@@ -83,14 +83,28 @@ class ServerManager:
   async def _download_server(self, callback_function=None, snapshot: str="latest"):
     await self.logger.passLog(2, f"Downloading server data for '{self.server_name}', snapshot: {snapshot}.")
     os.makedirs(f"./Servers/{self.server_name}", exist_ok=True)
-    await self.restic.restoreRepo(f"/cssystem/{self.server_name}/repo", ".", callback_function, f"{os.getcwd()}/Servers/{self.server_name}", snapshot)
+
+    async def convert(line):
+      await callback_function({"restic": json.loads(line)})
+
+    await self.restic.restoreRepo(f"/cssystem/{self.server_name}/repo", ".", convert, f"{os.getcwd()}/Servers/{self.server_name}", snapshot)
 
   async def _upload_server(self, callback_function=None, snapshot: str="latest"):
     await self.logger.passLog(2, f"Uploading server data for '{self.server_name}'.")
-    await self.restic.backupRepo(".", f"/cssystem/{self.server_name}/repo", callback_function, f"{os.getcwd()}/Servers/{self.server_name}")
+
+    async def convert(line):
+      await callback_function({"restic": json.loads(line)})
+
+    await self.restic.backupRepo(".", f"/cssystem/{self.server_name}/repo", convert, f"{os.getcwd()}/Servers/{self.server_name}")
 
   async def wait_till_restic_done(self):
     await self.restic.wait_until_done()
+
+  async def set_endpoint(self, endpoint):
+    await self.restic.set_endpoint(endpoint)
+
+  async def set_server_name(self, server_name):
+    self.server_name = server_name
 
   async def create_server(self, start_command_windows: str, start_command_linux: str, stop_command: str, forward_port: int, env: dict):
     os.makedirs(f"./Servers/{self.server_name}", exist_ok=True)
@@ -110,6 +124,9 @@ class ServerManager:
     self.restic.uploadPath("./cache/server_config.json", f"/cssystem/{self.server_name}/")
     await self._edit_server_list("append")
     
+  async def read_total_output(self):
+    return await self.server_process.read_total_output()
+
   async def delete_server(self):
     await self.logger.passLog(2, f"Deleting server '{self.server_name}'.")
     self.restic.deleteRemotePath(f"/cssystem/{self.server_name}")
@@ -179,21 +196,26 @@ class ServerManager:
       await self.set_newest_host()
       start_command = server_config["start_command_windows"] if os.name == "nt" else server_config["start_command_linux"]
       self.server_process = SubprocessHandler(start_command.split(), server_config["env"])
-      self.server_process.register_listener(callback_function)
+
+      async def convert(line):
+        await callback_function({"console": line})
+
+      self.server_process.register_listener(convert)
       self.server_process.start()
 
       # TODO: Tunnel port here when tunneling class is ready
 
   async def stop_server(self, callback_function=None):
     server_config = await self.get_server_config()
-    if not self.server_process is None:
+    try:
       if server_config["stop_command"] == "":
         await self.server_process.stop()
       else:
         await self.server_process.send_input(server_config["stop_command"])
         await self.server_process.wait_until_done()
-    else:
-      await self.logger.passLog(0, "Process is None")
+    except Exception:
+      await self.logger.passLog(0, "Process stop exception")
+    self.server_process = None
     result = callback_function({"info": "server stopped"})
 
     if inspect.isawaitable(result):

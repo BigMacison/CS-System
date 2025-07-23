@@ -39,6 +39,9 @@ class ResticManager:
       self.process.start()
       await self.logger.passLog(2, f"Restore process started for '{remote_path}'")
 
+  async def set_endpoint(self, endpoint):
+    self.endpoint = endpoint
+
   async def wait_until_done(self):
     # use this function in combination with await, to wait till the program is done.
     await self.logger.passLog(3, "Waiting for process to complete...")
