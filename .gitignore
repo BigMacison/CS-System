@@ -22,4 +22,3 @@ bin/
 logs/
 libraries/__pycache__/
 Servers/
-libraries/PlayitManager.py
