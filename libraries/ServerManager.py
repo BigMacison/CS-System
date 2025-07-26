@@ -24,6 +24,9 @@ class ServerManager:
     os.makedirs("./cache", exist_ok=True)   # Creates directories if nonexistent
     os.makedirs("./Servers", exist_ok=True)
 
+  async def process_exists(self):
+    return self.server_process is not None
+
   async def _load_host_history(self):
     await self.logger.passLog(2, f"Downloading host history for server '{self.server_name}'.")
     self.host_history_file = []
@@ -103,21 +106,32 @@ class ServerManager:
   async def set_server_name(self, server_name):
     self.server_name = server_name
 
-  async def create_server(self, start_command_windows: str, start_command_linux: str, stop_command: str, forward_port: int, env: dict):
+  async def create_server(self, start_command_windows: str, start_command_linux: str, stop_command: str, forward_port: int, env: dict, commands: list):
     os.makedirs(f"./Servers/{self.server_name}", exist_ok=True)
     
     if await self._is_in_server_list():
       await self.logger.passLog(1, f"Server '{self.server_name}' already exists in server list. Creation skipped.")
       return
     
-    conf_json = {"start_command_windows": start_command_windows, "start_command_linux": start_command_linux, "stop_command": stop_command, "forward_port": forward_port, "env": env}
+    # Convert commands to list of dicts
+    commands_dict = [command.dict() for command in commands] if commands else []
+
+    conf_json = {
+      "start_command_windows": start_command_windows,
+      "start_command_linux": start_command_linux,
+      "stop_command": stop_command,
+      "forward_port": forward_port,
+      "env": env,
+      "commands": commands_dict
+    }
+    
     await self.logger.passLog(2, f"Creating server with config: {conf_json}")
 
     self.restic.createRemoteFolder(f"/cssystem/{self.server_name}/repo")
     self.restic.initRepo(f"/cssystem/{self.server_name}/repo")
 
-    with open("./cache/server_config.json", "w") as f:   # Create temporary server_config.json, fill it, then upload it
-      f.write(json.dumps(conf_json, indent=4))
+    with open("./cache/server_config.json", "w") as f:
+      json.dump(conf_json, f, indent=4)  # Now safe to serialize
     self.restic.uploadPath("./cache/server_config.json", f"/cssystem/{self.server_name}/")
     await self._edit_server_list("append")
     
