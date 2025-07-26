@@ -26,15 +26,12 @@ class ServerManager:
 
   async def _load_host_history(self):
     await self.logger.passLog(2, f"Downloading host history for server '{self.server_name}'.")
+    self.host_history_file = []
+    open("./cache/host_history.json", 'w').write("[]")
     self.restic.downloadPath(f"/cssystem/{self.server_name}/host_history.json", "./cache/")   # Download existing server list (even if it doesn't exist on remote)
     
-    if not os.path.exists("./cache/host_history.json"):
-      with open("./cache/host_history.json", 'w') as f:
-        self.host_history_file = []
-        f.write("[]")
-    else:
-      with open("./cache/host_history.json", "r") as f:
-        self.host_history_file = json.loads(f.read())
+    with open("./cache/host_history.json", "r") as f:
+      self.host_history_file = json.loads(f.read())
 
   async def _save_host_history(self):
     await self.logger.passLog(2, "Saving host history to disk and uploading.")
@@ -135,14 +132,10 @@ class ServerManager:
 
   async def get_servers(self) -> list:
     await self.logger.passLog(2, "Fetching list of servers.")
+    open("./cache/servers.json", 'w').write("[]")
     self.restic.downloadPath("/cssystem/servers.json", "./cache/")   # Download existing server list (even if it doesn't exist on remote)
     
-    if not os.path.exists("./cache/servers.json"):
-      await self.logger.passLog(2, "Servers list not found locally, creating empty list.")
-      with open("./cache/servers.json", 'w') as f:
-        f.write("[]")
-    else:
-      with open("./cache/servers.json", "r") as f:
+    with open("./cache/servers.json", "r") as f:
         return json.loads(f.read())
 
   async def get_server_config(self) -> dict:
