@@ -2,6 +2,8 @@ import os
 import re
 import asyncio
 import json
+import configparser
+from io import StringIO
 from .SubprocessHandler import SubprocessHandler
 from .LogHelper import LogHelper
 
@@ -110,3 +112,39 @@ class ResticManager:
     except Exception as e:
       asyncio.create_task(self.logger.passLog(0, f"Failed to check repo at '{remote_path}': {str(e)}"))
       return False
+
+  def is_valid_rclone_config(self, config_text: str) -> bool:
+    parser = configparser.ConfigParser()
+    try:
+      parser.read_string(config_text)
+      # Rclone erfordert mindestens `type` in jeder Sektion
+      for section in parser.sections():
+        if "type" not in parser[section]:
+          return False
+      return True
+    except Exception:
+      return False
+
+  def normalize_section_names(self, config: configparser.ConfigParser) -> configparser.ConfigParser:
+    normalized = configparser.ConfigParser()
+    for section in config.sections():
+      new_section = section.replace(" ", "_")
+      normalized[new_section] = config[section]
+    return normalized
+
+  def merge_rclone_config(self, new_config_text: str, config_path: str = os.getcwd() + "/configs/rclone.conf"):
+    existing = configparser.ConfigParser()
+    if os.path.exists(config_path):
+      with open(config_path, "r") as f:
+        existing.read_file(f)
+
+    new_config = configparser.ConfigParser()
+    new_config.read_string(new_config_text)
+    
+    new_config = self.normalize_section_names(new_config)
+
+    for section in new_config.sections():
+      existing[section] = new_config[section]
+
+    with open(config_path, "w") as f:
+      existing.write(f)
