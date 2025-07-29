@@ -1442,8 +1442,11 @@
       const res = await fetch("/config/get");
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const config = await res.json();
+
+      // Always fetch endpoints to populate the dropdown
+      await fetchEndpoints();
+
       if (config.endpoint) {
-        await fetchEndpoints();
         endpointSelect.value = config.endpoint;
         if (config.server_name) {
           try {
@@ -1473,19 +1476,26 @@
             notify("Fehler beim Laden der Server", "#cc0000");
           }
         }
-        if (!serverIsRunning && !maintenanceMode) {
-          enableServerControls();
-          if (config.server_name) {
-            enableConfigure();
-            enableDeleteServer();
-            enableStartStop();
-            enableMaintenance();
-          }
+      }
+
+      // Enable server controls if no server is running and not in maintenance mode
+      if (!serverIsRunning && !maintenanceMode) {
+        enableServerControls();
+        if (config.endpoint && config.server_name) {
+          enableConfigure();
+          enableDeleteServer();
+          enableStartStop();
+          enableMaintenance();
         }
       }
     } catch (err) {
       console.error("Fehler beim Laden der Konfiguration:", err);
       notify("Fehler beim Laden der Konfiguration", "#cc0000");
+      // Still fetch endpoints to allow user selection
+      await fetchEndpoints();
+      if (!serverIsRunning && !maintenanceMode) {
+        enableServerControls();
+      }
     }
   }
 
