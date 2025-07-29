@@ -284,7 +284,7 @@ async def _wait_and_open():
   while True:
     try:
       async with aiohttp.ClientSession() as session:
-        async with session.get("http://192.168.2.210:8000/") as resp:
+        async with session.get("http://127.0.0.1:8000/") as resp:
           if resp.status == 200:
             await logger.passLog(2, "Uvicorn finished starting")
             break
@@ -292,7 +292,7 @@ async def _wait_and_open():
       pass
     await asyncio.sleep(0.2)
   await logger.passLog(2, "opening browser..")
-  webbrowser.open("http://192.168.2.210:8000/")
+  webbrowser.open("http://127.0.0.1:8000/")
 
 
 
