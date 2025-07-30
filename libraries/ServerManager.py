@@ -24,17 +24,17 @@ class ServerManager:
     os.makedirs("./cache", exist_ok=True)   # Creates directories if nonexistent
     os.makedirs("./Servers", exist_ok=True)
 
+  async def process_exists(self):
+    return self.server_process is not None
+
   async def _load_host_history(self):
     await self.logger.passLog(2, f"Downloading host history for server '{self.server_name}'.")
+    self.host_history_file = []
+    open("./cache/host_history.json", 'w').write("[]")
     self.restic.downloadPath(f"/cssystem/{self.server_name}/host_history.json", "./cache/")   # Download existing server list (even if it doesn't exist on remote)
     
-    if not os.path.exists("./cache/host_history.json"):
-      with open("./cache/host_history.json", 'w') as f:
-        self.host_history_file = []
-        f.write("[]")
-    else:
-      with open("./cache/host_history.json", "r") as f:
-        self.host_history_file = json.loads(f.read())
+    with open("./cache/host_history.json", "r") as f:
+      self.host_history_file = json.loads(f.read())
 
   async def _save_host_history(self):
     await self.logger.passLog(2, "Saving host history to disk and uploading.")
@@ -103,24 +103,40 @@ class ServerManager:
   async def set_endpoint(self, endpoint):
     await self.restic.set_endpoint(endpoint)
 
+  async def set_kept_backups(self, keep_hourly: int = 0, keep_daily: int = 0, keep_weekly: int = 0):
+    self.keep_hourly = keep_hourly
+    self.keep_daily = keep_daily
+    self.keep_weekly = keep_weekly
+
   async def set_server_name(self, server_name):
     self.server_name = server_name
 
-  async def create_server(self, start_command_windows: str, start_command_linux: str, stop_command: str, forward_port: int, env: dict):
+  async def create_server(self, start_command_windows: str, start_command_linux: str, stop_command: str, forward_port: int, env: dict, commands: list):
     os.makedirs(f"./Servers/{self.server_name}", exist_ok=True)
     
     if await self._is_in_server_list():
       await self.logger.passLog(1, f"Server '{self.server_name}' already exists in server list. Creation skipped.")
       return
     
-    conf_json = {"start_command_windows": start_command_windows, "start_command_linux": start_command_linux, "stop_command": stop_command, "forward_port": forward_port, "env": env}
+    # Convert commands to list of dicts
+    commands_dict = [command.dict() for command in commands] if commands else []
+
+    conf_json = {
+      "start_cmd_win": start_command_windows,
+      "start_cmd_linux": start_command_linux,
+      "stop_cmd": stop_command,
+      "forward_port": forward_port,
+      "env": env,
+      "commands": commands_dict
+    }
+    
     await self.logger.passLog(2, f"Creating server with config: {conf_json}")
 
     self.restic.createRemoteFolder(f"/cssystem/{self.server_name}/repo")
     self.restic.initRepo(f"/cssystem/{self.server_name}/repo")
 
-    with open("./cache/server_config.json", "w") as f:   # Create temporary server_config.json, fill it, then upload it
-      f.write(json.dumps(conf_json, indent=4))
+    with open("./cache/server_config.json", "w") as f:
+      json.dump(conf_json, f, indent=4)  # Now safe to serialize
     self.restic.uploadPath("./cache/server_config.json", f"/cssystem/{self.server_name}/")
     await self._edit_server_list("append")
     
@@ -135,20 +151,36 @@ class ServerManager:
 
   async def get_servers(self) -> list:
     await self.logger.passLog(2, "Fetching list of servers.")
+    open("./cache/servers.json", 'w').write("[]")
     self.restic.downloadPath("/cssystem/servers.json", "./cache/")   # Download existing server list (even if it doesn't exist on remote)
     
-    if not os.path.exists("./cache/servers.json"):
-      await self.logger.passLog(2, "Servers list not found locally, creating empty list.")
-      with open("./cache/servers.json", 'w') as f:
-        f.write("[]")
-    else:
-      with open("./cache/servers.json", "r") as f:
+    with open("./cache/servers.json", "r") as f:
         return json.loads(f.read())
 
   async def get_server_config(self) -> dict:
     self.restic.downloadPath(f"/cssystem/{self.server_name}/server_config.json", "./cache/")
     with open("./cache/server_config.json", "r") as f:
       return json.loads(f.read())
+
+  async def set_server_config(self, start_command_windows: str, start_command_linux: str, stop_command: str, forward_port: int, env: dict, commands: list):
+    if await self._is_in_server_list():
+      # Convert commands to list of dicts
+      commands_dict = [command.dict() for command in commands] if commands else []
+
+      conf_json = {
+        "start_cmd_win": start_command_windows,
+        "start_cmd_linux": start_command_linux,
+        "stop_cmd": stop_command,
+        "forward_port": forward_port,
+        "env": env,
+        "commands": commands_dict
+      }
+      
+      await self.logger.passLog(2, f"Changing config for server to: {conf_json}")
+
+      with open("./cache/server_config.json", "w") as f:
+        json.dump(conf_json, f, indent=4)
+      self.restic.uploadPath("./cache/server_config.json", f"/cssystem/{self.server_name}/")
 
   async def get_newest_host(self) -> dict:
     self.restic.downloadPath(f"/cssystem/{self.server_name}/host_history.json", "./cache/")   # Download existing server list (even if it doesn't exist on remote)
@@ -176,6 +208,12 @@ class ServerManager:
       self.host_history_file.append({"client_id": cm().getClientId(),"time": time.time(), "status": "hosting"})
       await self._save_host_history()
 
+  async def set_new_maintenance(self):
+    await self._load_host_history()
+    if await self.did_newest_host_upload():
+      self.host_history_file.append({"client_id": cm().getClientId(),"time": time.time(), "status": "maintenance"})
+      await self._save_host_history()
+
   async def set_newest_host_status(self):
     await self._load_host_history()
     if await self.is_client_newest_host():
@@ -194,8 +232,9 @@ class ServerManager:
     server_config = await self.get_server_config()
     if await self.did_newest_host_upload():
       await self.set_newest_host()
-      start_command = server_config["start_command_windows"] if os.name == "nt" else server_config["start_command_linux"]
-      self.server_process = SubprocessHandler(start_command.split(), server_config["env"])
+      start_command = server_config["start_cmd_win"] if os.name == "nt" else server_config["start_cmd_linux"]
+      process = SubprocessHandler(start_command.split(), server_config["env"], f"{os.getcwd()}/Servers/{self.server_name}")
+      self.server_process = process
 
       async def convert(line):
         await callback_function({"console": line})
@@ -205,21 +244,20 @@ class ServerManager:
 
       # TODO: Tunnel port here when tunneling class is ready
 
+  async def send_input(self, text: str):
+    await self.server_process.send_input(text)
+
   async def stop_server(self, callback_function=None):
     server_config = await self.get_server_config()
     try:
-      if server_config["stop_command"] == "":
+      if server_config["stop_cmd"] == "":
         await self.server_process.stop()
       else:
-        await self.server_process.send_input(server_config["stop_command"])
+        await self.server_process.send_input(server_config["stop_cmd"])
         await self.server_process.wait_until_done()
     except Exception:
       await self.logger.passLog(0, "Process stop exception")
     self.server_process = None
-    result = callback_function({"info": "server stopped"})
-
-    if inspect.isawaitable(result):
-      asyncio.run_coroutine_threadsafe(result, asyncio.get_event_loop())
 
     await self._upload_server(callback_function)
     await self.wait_till_restic_done()
@@ -227,5 +265,10 @@ class ServerManager:
     await self.set_newest_host_status()
 
     # TODO: Stop tunneling port
+
+    result = callback_function({"info": "server_stopped"})
+
+    if inspect.isawaitable(result):
+      asyncio.run_coroutine_threadsafe(result, asyncio.get_event_loop())
 
   
