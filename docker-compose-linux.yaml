@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-  cssystem:
+  cs-system:
     image: ghcr.io/bigmacison/cs-system:latest
     container_name: cs-system
     ports:
