@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  cssystem:
+    image: ghcr.io/bigmacison/cs-system:latest
+    container_name: cs-system
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${HOME}/.local/share/cssystemDATA/configs:/app/configs
+      - ${HOME}/.local/share/cssystemDATA/logs:/app/logs
+      - ${HOME}/.local/share/cssystemDATA/Servers:/app/Servers
