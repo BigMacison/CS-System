@@ -80,7 +80,10 @@ class ConfigUpdateRequest(BaseModel):
 # Serve the HTML page at /
 @app.get("/", response_class=FileResponse)
 async def index():
+  if not await sm.local_did_newest_host_upload():
     return "frontend/index.html"
+  else:
+    return "frontend/failed_upload.html"
 
 # ---------- WEBSOCKETS ----------
 
@@ -98,6 +101,9 @@ async def websocket_endpoint(websocket: WebSocket):
   await websocket.accept()
   ws_id = id(websocket)
   websockets[ws_id] = websocket
+
+  if await sm.local_did_newest_host_upload():
+    await websocket.send_json({"info": "reload"})
 
   try:
     output_str = await sm.read_total_output()
@@ -177,6 +183,12 @@ async def stop_server():
   await sm.stop_server(forward_to_websockets)
   return {"status": "server_stopped"}
 
+@app.post("/server/force_stop")
+async def force_stop_server():
+  await sm.force_stop_server()
+  await forward_to_websockets({"info": "reload"})
+  return {"status": "server_force_stopped"}
+
 @app.post("/server/send")
 async def stop_server(data: ServerInput):
   await sm.send_input(data.input)
@@ -190,6 +202,7 @@ async def read_total_output():
 @app.post("/server/upload")
 async def upload_server():
   if not await sm.is_client_newest_host():
+    await forward_to_websockets({"info": "reload"})
     return {"error": "client_is_not_newest_host"}
   else:
     await sm._upload_server(forward_to_websockets)
@@ -243,6 +256,11 @@ async def did_upload():
   uploaded = await sm.did_newest_host_upload()
   return {"did_upload": uploaded}
 
+@app.post("/server/local_did_upload")
+async def did_upload():
+  uploaded = await sm.local_did_newest_host_upload()
+  return {"did_upload": uploaded}
+
 @app.post("/server/config/set")
 async def create_server(data: ServerConfigChangeRequest):
   await sm.set_server_config(
@@ -291,8 +309,8 @@ async def _wait_and_open():
     except:
       pass
     await asyncio.sleep(0.2)
-  await logger.passLog(2, "opening browser..")
-  webbrowser.open("http://127.0.0.1:8000/")
+  #await logger.passLog(2, "opening browser..")
+  #webbrowser.open("http://127.0.0.1:8000/")
 
 
 

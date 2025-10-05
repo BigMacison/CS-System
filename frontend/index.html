@@ -262,9 +262,43 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+    #wsOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1500;
+      pointer-events: all;
+    }
+    #wsOverlay.hidden {
+      display: none;
+    }
+    #wsOverlayText {
+      color: white;
+      font-size: 48px;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #wsOverlaySubtext {
+      color: #aaa;
+      font-size: 24px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
+<!-- WebSocket Overlay -->
+<div id="wsOverlay" class="hidden">
+  <div id="wsOverlayText">WebSocket connection lost</div>
+  <div id="wsOverlaySubtext">reconnecting...</div>
+</div>
 <!-- Sidebar -->
 <div id="sidebar">
   <div class="dropdown-row">
@@ -401,7 +435,8 @@
   const sendBtn = document.getElementById("send");
   let ws;
   let maintenanceMode = false;
-  let ongoingTransfers = {}; // Tracks ongoing upload/download notifications
+  let ongoingTransfers = {};
+  const wsOverlay = document.getElementById("wsOverlay");
 
   function addToTerminal(text, autoScroll = false) {
     const atBottom = terminal.scrollTop + terminal.clientHeight >= terminal.scrollHeight - 5;
@@ -567,7 +602,6 @@
             if (!uploaded) {
               return false;
             }
-            // Retry starting the server after successful upload
             const retryRes = await fetch("/server/start", { method: "POST" });
             const retryData = await retryRes.json();
             if (retryData.error) {
@@ -594,10 +628,13 @@
   }
 
   function initializeWebSocket() {
+    console.log("Initializing WebSocket");
     ws = new WebSocket(`ws://${window.location.host}/ws`);
     
     ws.onopen = () => {
+      console.log("WebSocket opened, hiding overlay");
       notify("WebSocket-Verbindung hergestellt", "#228833");
+      wsOverlay.classList.add("hidden");
     };
 
     ws.onmessage = (event) => {
@@ -610,7 +647,10 @@
             addToTerminal(data.console, true);
           }
         } else if (data.info) {
-          if (data.info === "server_active") {
+          if (data.info === "reload") {
+            console.log("Received reload message, reloading page");
+            window.location.reload();
+          } else if (data.info === "server_active") {
             updateStartStopUI(true);
             notify("Server ist aktiv", "#228833");
           } else if (data.info === "server_stopped") {
@@ -645,13 +685,17 @@
     };
 
     ws.onclose = () => {
+      console.log("WebSocket closed, showing overlay");
       notify("WebSocket-Verbindung geschlossen. Versuche erneut zu verbinden...", "#cc0000");
+      wsOverlay.classList.remove("hidden");
       setTimeout(initializeWebSocket, 5000);
     };
 
     ws.onerror = (err) => {
       console.error("WebSocket-Fehler:", err);
+      console.log("WebSocket error, showing overlay");
       notify("WebSocket-Fehler aufgetreten", "#cc0000");
+      wsOverlay.classList.remove("hidden");
     };
   }
 
@@ -680,7 +724,6 @@
     notify(`Aktion ausgeführt: ${name}`, "#4444ff");
   }
 
-  // Notifications
   const toast = document.getElementById("notificationToast");
   const notifToggle = document.getElementById("toggleNotifications");
   const notifPanel = document.getElementById("notificationPanel");
@@ -917,7 +960,6 @@
     });
   }
 
-  // Modal Handling
   const configModalOverlay = document.getElementById("configModalOverlay");
   const serverConfigForm = document.getElementById("serverConfigForm");
   const serverConfigCancel = document.getElementById("serverConfigCancel");
@@ -1404,14 +1446,12 @@
 
   async function handleMaintenanceClick() {
     if (maintenanceMode) {
-      // In maintenance mode, button is "Upload"
       const uploaded = await uploadServer();
       if (uploaded) {
         exitMaintenanceMode();
         notify("Wartungsmodus beendet, Server hochgeladen", "#228833");
       }
     } else {
-      // Enter maintenance mode
       const success = await setMaintenanceMode();
       if (success) {
         enterMaintenanceMode();
@@ -1443,7 +1483,6 @@
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const config = await res.json();
 
-      // Always fetch endpoints to populate the dropdown
       await fetchEndpoints();
 
       if (config.endpoint) {
@@ -1458,7 +1497,6 @@
               serverSelect.value = config.server_name;
               if (servers.includes(config.server_name)) {
                 await loadServerConfig(config.endpoint, config.server_name);
-                // Check maintenance mode
                 const newestHost = await getNewestHost();
                 if (newestHost && newestHost.status === "maintenance") {
                   const isNewest = await checkServerIsNewest();
@@ -1478,7 +1516,6 @@
         }
       }
 
-      // Enable server controls if no server is running and not in maintenance mode
       if (!serverIsRunning && !maintenanceMode) {
         enableServerControls();
         if (config.endpoint && config.server_name) {
@@ -1491,7 +1528,6 @@
     } catch (err) {
       console.error("Fehler beim Laden der Konfiguration:", err);
       notify("Fehler beim Laden der Konfiguration", "#cc0000");
-      // Still fetch endpoints to allow user selection
       await fetchEndpoints();
       if (!serverIsRunning && !maintenanceMode) {
         enableServerControls();
@@ -1616,7 +1652,6 @@
         enableDeleteServer();
         enableMaintenance();
       }
-      // Check maintenance mode
       const newestHost = await getNewestHost();
       if (newestHost && newestHost.status === "maintenance") {
         const isNewest = await checkServerIsNewest();
@@ -1701,8 +1736,8 @@
     }
   });
 
-  // Initial State
   async function initialize() {
+    console.log("Initializing application");
     setStartStopText("Start");
     setStartStopColor("#228833");
     disableStartStop();

@@ -50,6 +50,10 @@ class ResticManager:
     await self.process.wait_until_done()
     await self.logger.passLog(2, "Process completed.")
 
+  async def force_stop(self):
+    await self.process.stop()
+    await self.logger.passLog(2, "Restic force stopped")
+
   def deleteRemotePath(self, remote_path: str):
     asyncio.create_task(self.logger.passLog(2, f"Removing remote path '{remote_path}'"))
     try:
