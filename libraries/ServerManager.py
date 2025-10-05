@@ -96,9 +96,15 @@ class ServerManager:
       await callback_function({"restic": json.loads(line)})
 
     await self.restic.backupRepo(".", f"/cssystem/{self.server_name}/repo", convert, f"{os.getcwd()}/Servers/{self.server_name}")
+    
+    if os.path.isfile("./cache/HOSTING"):
+      os.remove("./cache/HOSTING")
 
   async def wait_till_restic_done(self):
     await self.restic.wait_until_done()
+
+  async def force_stop_restic(self):
+    await self.restic.force_stop()
 
   async def set_endpoint(self, endpoint):
     await self.restic.set_endpoint(endpoint)
@@ -196,6 +202,9 @@ class ServerManager:
       return True
     return False
 
+  async def local_did_newest_host_upload(self) -> bool:
+    return os.path.isfile("./cache/HOSTING")
+
   async def is_client_newest_host(self):
     await self._load_host_history()
     if not self.host_history_file == [] and self.host_history_file[-1]["client_id"] == cm().getClientId():
@@ -240,12 +249,18 @@ class ServerManager:
         await callback_function({"console": line})
 
       self.server_process.register_listener(convert)
+      with open("./cache/HOSTING", "w") as f:
+        f.write("HOSTING")
       self.server_process.start()
 
       # TODO: Tunnel port here when tunneling class is ready
 
   async def send_input(self, text: str):
     await self.server_process.send_input(text)
+
+  async def force_stop_server(self):
+    self.server_process.stop()
+    self.force_stop_restic()
 
   async def stop_server(self, callback_function=None):
     server_config = await self.get_server_config()

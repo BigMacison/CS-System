@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Server Upload</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background-color: black;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      text-align: center;
+    }
+    h1 {
+      font-size: 48px;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    #progressContainer {
+      width: 300px;
+      height: 20px;
+      background-color: #222;
+      border-radius: 4px;
+      overflow: hidden;
+      display: none;
+    }
+    #progressBar {
+      height: 100%;
+      background-color: #228833;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    #errorMessage {
+      color: #cc0000;
+      font-size: 18px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Server wasn't uploaded</h1>
+  <button id="uploadBtn">Upload</button>
+  <div id="progressContainer">
+    <div id="progressBar"></div>
+  </div>
+  <div id="errorMessage"></div>
+
+  <script>
+    const uploadBtn = document.getElementById("uploadBtn");
+    const progressContainer = document.getElementById("progressContainer");
+    const progressBar = document.getElementById("progressBar");
+    const errorMessage = document.getElementById("errorMessage");
+    let ws;
+
+    function initializeWebSocket() {
+      ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+      ws.onopen = () => {
+        console.log("WebSocket connected for upload progress");
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.restic && data.restic.message_type === "status") {
+            const percent = Math.round(data.restic.percent_done * 100);
+            progressBar.style.width = percent + "%";
+          } else if (data.restic && data.restic.message_type === "summary") {
+            window.location.reload();
+          }
+        } catch (err) {
+          console.error("Error parsing WebSocket message:", err);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket closed");
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+      };
+    }
+
+    uploadBtn.addEventListener("click", async () => {
+      uploadBtn.disabled = true;
+      progressContainer.style.display = "block";
+      errorMessage.textContent = "";
+      try {
+        const res = await fetch("/server/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const data = await res.json();
+        if (data.status !== "server_uploaded") {
+          throw new Error(`Unexpected response: ${JSON.stringify(data)}`);
+        }
+      } catch (err) {
+        console.error("Error uploading server:", err);
+        errorMessage.textContent = `Error: ${err.message}`;
+        uploadBtn.disabled = false;
+        progressContainer.style.display = "none";
+        progressBar.style.width = "0%";
+      }
+    });
+
+    initializeWebSocket();
+  </script>
+</body>
+</html>
