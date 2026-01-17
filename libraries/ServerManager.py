@@ -8,6 +8,7 @@ from typing import Literal
 from .ResticManager import ResticManager
 from .ConfigManager import ConfigManager as cm
 from .SubprocessHandler import SubprocessHandler
+from .DockerComposeHandler import DockerComposeHandler
 from .LogHelper import LogHelper
 
 class ServerManager:
@@ -117,34 +118,19 @@ class ServerManager:
   async def set_server_name(self, server_name):
     self.server_name = server_name
 
-  async def create_server(self, start_command_windows: str, start_command_linux: str, stop_command: str, forward_port: int, env: dict, commands: list):
+  async def create_server(self, docker_compose_file: str, container_name: str, env: dict, stop_command: str, commands: list):
     os.makedirs(f"./Servers/{self.server_name}", exist_ok=True)
     
     if await self._is_in_server_list():
       await self.logger.passLog(1, f"Server '{self.server_name}' already exists in server list. Creation skipped.")
       return
     
-    # Convert commands to list of dicts
-    commands_dict = [command.dict() for command in commands] if commands else []
-
-    conf_json = {
-      "start_cmd_win": start_command_windows,
-      "start_cmd_linux": start_command_linux,
-      "stop_cmd": stop_command,
-      "forward_port": forward_port,
-      "env": env,
-      "commands": commands_dict
-    }
-    
-    await self.logger.passLog(2, f"Creating server with config: {conf_json}")
-
     self.restic.createRemoteFolder(f"/cssystem/{self.server_name}/repo")
     self.restic.initRepo(f"/cssystem/{self.server_name}/repo")
 
-    with open("./cache/server_config.json", "w") as f:
-      json.dump(conf_json, f, indent=4)  # Now safe to serialize
-    self.restic.uploadPath("./cache/server_config.json", f"/cssystem/{self.server_name}/")
     await self._edit_server_list("append")
+
+    await self.set_server_config(docker_compose_file, container_name, env, stop_command, commands)
     
   async def read_total_output(self):
     return await self.server_process.read_total_output()
@@ -163,22 +149,66 @@ class ServerManager:
     with open("./cache/servers.json", "r") as f:
         return json.loads(f.read())
 
+  async def get_docker_compose_file(self):
+    with open(f"./Servers/{self.server_name}/docker-compose.yaml", "r") as f:
+      return f.read()
+
+  async def set_docker_compose_file(self, content: str):
+    with open(f"./Servers/{self.server_name}/docker-compose.yaml", "w") as f:
+      f.write(content)
+
+  async def get_env_file(self):
+    env_dict = {}
+    file_path = f"./Servers/{self.server_name}/.env"
+
+    if not os.path.exists(file_path):
+      return env_dict
+
+    try:
+      with open(file_path, 'r') as file:
+        for line in file:
+          # Skip empty lines or comments
+          line = line.strip()
+          if line and not line.startswith('#'):
+            # Split on first '=' only
+            key, value = line.split('=', 1)
+            env_dict[key.strip()] = value.strip()
+      return env_dict
+    except FileNotFoundError:
+      await self.logger.passLog(0, f"File {file_path} not found")
+      return {}
+    except Exception as e:
+      await self.logger.passLog(0, f"Error parsing .env file: {str(e)}")
+      return {}
+
+  async def set_env_file(self, env_dict: dict):
+    file_path = f"./Servers/{self.server_name}/.env"
+    try:
+      with open(file_path, 'w') as f:
+        for key, value in env_dict.items():
+          f.write(f"{key}={value}\n")
+    except Exception as e:
+      await self.logger.passLog(0, f"Error writing to {file_path}: {str(e)}")
+
+
   async def get_server_config(self) -> dict:
     self.restic.downloadPath(f"/cssystem/{self.server_name}/server_config.json", "./cache/")
     with open("./cache/server_config.json", "r") as f:
-      return json.loads(f.read())
+      main_dict = json.loads(f.read())
+      main_dict.update({"docker_compose_file": await self.get_docker_compose_file(), "env": await self.get_env_file()})
+      return main_dict
 
-  async def set_server_config(self, start_command_windows: str, start_command_linux: str, stop_command: str, forward_port: int, env: dict, commands: list):
+  async def set_server_config(self, docker_compose_file: str, container_name: str, env: dict, stop_command: str, commands: list):
     if await self._is_in_server_list():
+      await self.set_docker_compose_file(docker_compose_file)
+      await self.set_env_file(env)
+
       # Convert commands to list of dicts
       commands_dict = [command.dict() for command in commands] if commands else []
 
       conf_json = {
-        "start_cmd_win": start_command_windows,
-        "start_cmd_linux": start_command_linux,
+        "container_name":container_name,
         "stop_cmd": stop_command,
-        "forward_port": forward_port,
-        "env": env,
         "commands": commands_dict
       }
       
@@ -241,17 +271,18 @@ class ServerManager:
     server_config = await self.get_server_config()
     if await self.did_newest_host_upload():
       await self.set_newest_host()
-      start_command = server_config["start_cmd_win"] if os.name == "nt" else server_config["start_cmd_linux"]
-      process = SubprocessHandler(start_command.split(), server_config["env"], f"{os.getcwd()}/Servers/{self.server_name}")
+      # start_command = server_config["start_cmd_win"] if os.name == "nt" else server_config["start_cmd_linux"]
+      # process = SubprocessHandler(start_command.split(), server_config["env"], f"{os.getcwd()}/Servers/{self.server_name}")
+      process = DockerComposeHandler(f"{os.getcwd()}/Servers/{self.server_name}", server_config["container_name"])
       self.server_process = process
 
       async def convert(line):
         await callback_function({"console": line})
 
-      self.server_process.register_listener(convert)
+      await self.server_process.register_listener(convert)
       with open("./cache/HOSTING", "w") as f:
         f.write("HOSTING")
-      self.server_process.start()
+      await self.server_process.start()
 
       # TODO: Tunnel port here when tunneling class is ready
 
@@ -286,4 +317,12 @@ class ServerManager:
     if inspect.isawaitable(result):
       asyncio.run_coroutine_threadsafe(result, asyncio.get_event_loop())
 
-  
+  async def containers_exist(self):
+    server_config = await self.get_server_config()
+    process = DockerComposeHandler(f"{os.getcwd()}/Servers/{self.server_name}", server_config["container_name"])
+    return await process.check_images_exist()
+
+  async def prepare_images(self):
+    server_config = await self.get_server_config()
+    process = DockerComposeHandler(f"{os.getcwd()}/Servers/{self.server_name}", server_config["container_name"])
+    await process.prepare_images()

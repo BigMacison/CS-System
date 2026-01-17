@@ -41,21 +41,19 @@ class Command(BaseModel):
   arguments: List[CommandArgument]
 
 class ServerConfigChangeRequest(BaseModel):
-  start_cmd_win: Optional[str] = ""
-  start_cmd_linux: Optional[str] = "./ping1 google.com"
-  stop_cmd: Optional[str] = ""
-  port: int = 8080
+  docker_compose_file: str
+  container_name: str
   env: Dict[str, str] = {}
+  stop_cmd: Optional[str] = ""
   commands: Optional[List[Command]] = []
 
 class ServerCreateRequest(BaseModel):
   server_name: str
   endpoint: str
-  start_cmd_win: Optional[str] = ""
-  start_cmd_linux: Optional[str] = "./ping google.com"
-  stop_cmd: Optional[str] = ""
-  port: int = 8080
+  docker_compose_file: str
+  container_name: str
   env: Dict[str, str] = {}
+  stop_cmd: Optional[str] = ""
   commands: Optional[List[Command]] = []
 
 class ServerIdentifier(BaseModel):
@@ -80,10 +78,10 @@ class ConfigUpdateRequest(BaseModel):
 # Serve the HTML page at /
 @app.get("/", response_class=FileResponse)
 async def index():
-  if not await sm.local_did_newest_host_upload():
-    return "frontend/index.html"
-  else:
+  if await sm.local_did_newest_host_upload() and not await sm.process_exists():
     return "frontend/failed_upload.html"
+  else:
+    return "frontend/index.html"
 
 # ---------- WEBSOCKETS ----------
 
@@ -102,7 +100,7 @@ async def websocket_endpoint(websocket: WebSocket):
   ws_id = id(websocket)
   websockets[ws_id] = websocket
 
-  if await sm.local_did_newest_host_upload():
+  if await sm.local_did_newest_host_upload() and not await sm.process_exists():
     await websocket.send_json({"info": "reload"})
 
   try:
@@ -155,7 +153,7 @@ async def update_config(payload: ConfigUpdateRequest):
 async def create_server(data: ServerCreateRequest):
   smt = ServerManager(data.endpoint, data.server_name)
   await smt.create_server(
-    data.start_cmd_win, data.start_cmd_linux, data.stop_cmd, data.port, data.env, data.commands
+    data.docker_compose_file, data.container_name, data.env, data.stop_cmd, data.commands
   )
   return {"status": "server_created"}
 
@@ -182,6 +180,15 @@ async def start_server():
 async def stop_server():
   await sm.stop_server(forward_to_websockets)
   return {"status": "server_stopped"}
+
+@app.get("/server/containers_exist")
+async def containers_exist():
+  return {"exist": await sm.containers_exist()}
+
+@app.post("/server/prepare_images")
+async def prepare_images():
+  await sm.prepare_images()
+  return {"status": "images_downloaded"}
 
 @app.post("/server/force_stop")
 async def force_stop_server():
@@ -264,7 +271,7 @@ async def did_upload():
 @app.post("/server/config/set")
 async def create_server(data: ServerConfigChangeRequest):
   await sm.set_server_config(
-    data.start_cmd_win, data.start_cmd_linux, data.stop_cmd, data.port, data.env, data.commands
+    data.docker_compose_file, data.container_name, data.env, data.stop_cmd, data.commands
   )
   return {"status": "changed_config"}
 

@@ -2,3 +2,5 @@ uvicorn[standard]
 fastapi
 aiofiles
 aiohttp
+docker
+pyyaml

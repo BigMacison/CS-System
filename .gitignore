@@ -6,3 +6,6 @@ Servers/
 cache/
 testing_files/
 fast_remove.sh
+mytool.spec
+build/
+cs-system.spec
