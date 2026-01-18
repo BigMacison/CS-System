@@ -324,3 +324,20 @@ class DockerComposeHandler:
     except Exception as e:
       print(f"Error preparing images: {e}")
       raise RuntimeError(f"Error preparing images: {e}")
+
+  async def is_container_running(self, container_name: str = None) -> bool:
+    """
+    Prüft, ob ein Container mit dem gegebenen Namen läuft.
+    
+    :param container_name: Optionaler Name; verwendet self.container_name, falls None.
+    :return: True, wenn der Container existiert und running ist; sonst False.
+    """
+    name = container_name or self.container_name
+    try:
+      container = self.client.containers.get(name)
+      return container.status == "running"
+    except docker.errors.NotFound:
+      return False
+    except docker.errors.APIError as e:
+      print(f"Fehler beim Abrufen des Container-Status: {e}")
+      return False

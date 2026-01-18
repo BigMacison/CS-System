@@ -195,7 +195,8 @@ class ServerManager:
     self.restic.downloadPath(f"/cssystem/{self.server_name}/server_config.json", "./cache/")
     with open("./cache/server_config.json", "r") as f:
       main_dict = json.loads(f.read())
-      main_dict.update({"docker_compose_file": await self.get_docker_compose_file(), "env": await self.get_env_file()})
+      # main_dict.update({"docker_compose_file": await self.get_docker_compose_file(), "env": await self.get_env_file()})
+      main_dict.update({"env": await self.get_env_file()})
       return main_dict
 
   async def set_server_config(self, docker_compose_file: str, container_name: str, env: dict, stop_command: str, commands: list):
@@ -293,17 +294,22 @@ class ServerManager:
     self.server_process.stop()
     self.force_stop_restic()
 
-  async def stop_server(self, callback_function=None):
+  async def stop_server(self, callback_function=None, server_process=None):
+    process = self.server_process
+
+    if server_process is not None:
+      process = server_process
+    
     server_config = await self.get_server_config()
     try:
       if server_config["stop_cmd"] == "":
-        await self.server_process.stop()
+        await process.stop()
       else:
-        await self.server_process.send_input(server_config["stop_cmd"])
-        await self.server_process.wait_until_done()
+        await process.send_input(server_config["stop_cmd"])
+        await process.wait_until_done()
     except Exception:
       await self.logger.passLog(0, "Process stop exception")
-    self.server_process = None
+    process = None
 
     await self._upload_server(callback_function)
     await self.wait_till_restic_done()
@@ -322,7 +328,18 @@ class ServerManager:
     process = DockerComposeHandler(f"{os.getcwd()}/Servers/{self.server_name}", server_config["container_name"])
     return await process.check_images_exist()
 
-  async def prepare_images(self):
+  async def prepare_images(self, callback_function=None):
+    await self._download_server(callback_function)
+    await self.wait_till_restic_done()
     server_config = await self.get_server_config()
     process = DockerComposeHandler(f"{os.getcwd()}/Servers/{self.server_name}", server_config["container_name"])
     await process.prepare_images()
+
+  async def is_container_running(self) -> bool:
+    server_config = await self.get_server_config()
+    return await DockerComposeHandler(f"{os.getcwd()}/Servers/{self.server_name}", server_config["container_name"]).is_container_running()
+
+  async def container_cleanup_stop(self, callback_function=None):
+    server_config = await self.get_server_config()
+    process = DockerComposeHandler(f"{os.getcwd()}/Servers/{self.server_name}", server_config["container_name"])
+    await self.stop_server(callback_function, process)

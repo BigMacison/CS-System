@@ -327,16 +327,13 @@
   </style>
 </head>
 <body>
-<!-- WebSocket Overlay -->
 <div id="wsOverlay" class="hidden">
   <div id="wsOverlayText">WebSocket connection lost</div>
   <div id="wsOverlaySubtext">reconnecting...</div>
 </div>
-<!-- Loading Overlay for Modals -->
 <div id="modalLoadingOverlay" class="loading-overlay hidden">
   <div class="loader-indeterminate"></div>
 </div>
-<!-- Sidebar -->
 <div id="sidebar">
   <div class="dropdown-row">
     <select id="endpointSelect"></select>
@@ -344,6 +341,7 @@
   </div>
   <div class="dropdown-row">
     <select id="serverSelect"></select>
+    <button id="serverImportBtn" class="add-btn" onclick="openServerImportModal()" title="Server importieren">⬇</button>
     <button id="serverAddBtn" class="add-btn" onclick="openServerCreateModal()">+</button>
     <div id="serverSelectLoader" class="loader-container hidden" style="top: 0; left: 0; right: 30px; height: 100%;">
       <div class="loader-indeterminate"></div>
@@ -360,7 +358,6 @@
   <button id="maintenanceBtn" class="maintenance-btn">Maintenance</button>
   <button id="deleteServerBtn" class="delete-btn" onclick="confirmDeleteServer()">Delete Server</button>
 </div>
-<!-- Terminal -->
 <div id="terminal-container">
   <div id="terminal"></div>
   <div id="input-bar">
@@ -368,14 +365,12 @@
     <button id="send">Send</button>
   </div>
 </div>
-<!-- Notifications -->
 <div id="notificationToast" class="toast hidden"></div>
 <button id="toggleNotifications" class="notif-toggle">🔔</button>
 <div id="notificationPanel" class="notif-panel hidden">
   <h3>Alle Benachrichtigungen</h3>
   <div id="notificationList"></div>
 </div>
-<!-- Config Modal -->
 <div id="configModalOverlay" class="modal-overlay hidden">
   <div class="modal-window">
     <h2>Server konfigurieren</h2>
@@ -399,20 +394,17 @@
     </form>
   </div>
 </div>
-<!-- Argument Modal -->
 <div id="argumentModalOverlay" class="modal-overlay hidden">
   <div class="modal-window" id="argumentModal">
     <h2 id="argumentModalTitle">Befehl ausführen</h2>
     <form id="argumentForm">
-      <!-- Inputs will be dynamically added here -->
-    </form>
+      </form>
     <div style="text-align: right; margin-top: 10px;">
       <button id="argumentCancel" type="button" style="margin-right: 10px;">Abbrechen</button>
       <button id="argumentSubmit" type="submit">Ausführen</button>
     </div>
   </div>
 </div>
-<!-- Server Create Modal -->
 <div id="serverCreateModalOverlay" class="modal-overlay hidden">
   <div class="modal-window">
     <h2>Neuen Server erstellen</h2>
@@ -440,7 +432,29 @@
     </form>
   </div>
 </div>
-<!-- Endpoint Create Modal -->
+<div id="serverImportModalOverlay" class="modal-overlay hidden">
+  <div class="modal-window">
+    <h2>Server importieren</h2>
+    <form id="serverImportForm">
+      <label for="serverImportEndpoint">Endpoint</label>
+      <select id="serverImportEndpoint" name="endpoint" required></select>
+      
+      <label for="serverImportName">Server Name</label>
+      <input type="text" id="serverImportName" name="server_name" required>
+      <!--
+      <label for="serverImportContainerName">Container Name</label>
+      <input type="text" id="serverImportContainerName" name="container_name" required>
+      -->
+      <label for="serverImportData">Restliche Daten (JSON Dictionary)</label>
+      <textarea id="serverImportData" name="data" placeholder='{"docker_compose_file": "...", "env": {...}, "commands": [...]}' required></textarea>
+      
+      <div style="text-align: right; margin-top: 10px;">
+        <button type="button" id="serverImportCancel" style="margin-right: 10px;">Abbrechen</button>
+        <button type="submit" id="serverImportSubmit">Importieren</button>
+      </div>
+    </form>
+  </div>
+</div>
 <div id="endpointCreateModalOverlay" class="modal-overlay hidden">
   <div class="modal-window">
     <h2>Rclone-Konfiguration hinzufügen</h2>
@@ -454,7 +468,6 @@
     </form>
   </div>
 </div>
-<!-- Script -->
 <script>
   const terminal = document.getElementById("terminal");
   const input = document.getElementById("input");
@@ -869,6 +882,7 @@
         setStartStopText("Start");
         setStartStopColor("#228833");
         enableStartStop();
+        enableMaintenance(); // Aktiviert den Maintenance Button, da nun installiert
       } else {
         enableStartStop();
       }
@@ -989,6 +1003,7 @@
   const configureBtn = document.getElementById("configureBtn");
   const serverSelect = document.getElementById("serverSelect");
   const serverAddBtn = document.getElementById("serverAddBtn");
+  const serverImportBtn = document.getElementById("serverImportBtn");
   const endpointSelect = document.getElementById("endpointSelect");
   const predefinedContainer = document.getElementById("predefinedInputs");
   const deleteServerBtn = document.getElementById("deleteServerBtn");
@@ -1021,13 +1036,16 @@
       if (containersExist) {
         setStartStopText("Start");
         setStartStopColor("#228833");
+        enableMaintenance(); // Maintenance möglich, da Server existiert
       } else {
         setStartStopText("Install");
         setStartStopColor("#663399");
+        disableMaintenance(); // Maintenance nicht möglich, da Server noch nicht installiert
       }
       enableStartStop();
     } else {
       disableStartStop();
+      disableMaintenance();
     }
   }
 
@@ -1049,10 +1067,12 @@
   function disableServerControls() {
     serverSelect.disabled = true;
     serverAddBtn.disabled = true;
+    serverImportBtn.disabled = true;
     endpointSelect.disabled = true;
     document.querySelector(".add-btn[onclick=\"openEndpointCreateModal()\"]").disabled = true;
     serverSelect.style.opacity = "0.5";
     serverAddBtn.style.opacity = "0.5";
+    serverImportBtn.style.opacity = "0.5";
     endpointSelect.style.opacity = "0.5";
     document.querySelector(".add-btn[onclick=\"openEndpointCreateModal()\"]").style.opacity = "0.5";
   }
@@ -1060,10 +1080,12 @@
   function enableServerControls() {
     serverSelect.disabled = false;
     serverAddBtn.disabled = false;
+    serverImportBtn.disabled = false;
     endpointSelect.disabled = false;
     document.querySelector(".add-btn[onclick=\"openEndpointCreateModal()\"]").disabled = false;
     serverSelect.style.opacity = "1";
     serverAddBtn.style.opacity = "1";
+    serverImportBtn.style.opacity = "1";
     endpointSelect.style.opacity = "1";
     document.querySelector(".add-btn[onclick=\"openEndpointCreateModal()\"]").style.opacity = "1";
   }
@@ -1229,7 +1251,8 @@
     }
 
     try {
-      const res = await fetch("/server/config", {
+      // Endpoint geändert zu /server/config_with_docker, um Docker File zu bekommen
+      const res = await fetch("/server/config_with_docker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1600,6 +1623,119 @@
     }
   });
 
+  // START: Server Import Logic
+  const serverImportModalOverlay = document.getElementById("serverImportModalOverlay");
+  const serverImportForm = document.getElementById("serverImportForm");
+  const serverImportCancel = document.getElementById("serverImportCancel");
+
+  async function openServerImportModal() {
+    serverImportForm.reset();
+    
+    // Endpoints laden (wie beim Erstellen)
+    try {
+      const res = await fetch(`/endpoints`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const serverImportEndpoint = document.getElementById("serverImportEndpoint");
+        serverImportEndpoint.innerHTML = "";
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        placeholder.hidden = true;
+        placeholder.textContent = "Bitte Endpoint auswählen";
+        serverImportEndpoint.appendChild(placeholder);
+        data.forEach(endpoint => {
+          const option = document.createElement("option");
+          option.value = endpoint;
+          option.textContent = endpoint;
+          serverImportEndpoint.appendChild(option);
+        });
+      }
+    } catch (err) {
+      console.error("Fehler beim Laden der Endpoints für Import:", err);
+      notify("Fehler beim Laden der Endpoints", "#cc0000");
+    }
+
+    serverImportModalOverlay.classList.remove("hidden");
+  }
+
+  serverImportForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!serverImportForm.checkValidity()) {
+      serverImportForm.reportValidity();
+      return;
+    }
+
+    // 1. JSON Parsen
+    const jsonText = document.getElementById("serverImportData").value;
+    let data;
+    try {
+      data = JSON.parse(jsonText);
+    } catch (err) {
+      notify("Ungültiges JSON-Format. Bitte prüfen Sie Ihre Eingabe.", "#cc0000");
+      return;
+    }
+
+    // 2. UI-Felder auslesen und in das Dictionary schreiben (überschreiben)
+    const uiEndpoint = document.getElementById("serverImportEndpoint").value;
+    const uiServerName = document.getElementById("serverImportName").value;
+    //const uiContainerName = document.getElementById("serverImportContainerName").value;
+
+    data.endpoint = uiEndpoint;
+    data.server_name = uiServerName;
+    // data.container_name = uiContainerName;
+
+    try {
+      const res = await fetch("/server/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw new Error(`HTTP Status ${res.status}`);
+      const result = await res.json();
+      if (result.status !== "server_created") {
+        notify(`Fehler beim Importieren des Servers: ${result.error || "Unbekannter Fehler"}`, "#cc0000");
+      } else {
+        serverImportModalOverlay.classList.add("hidden");
+        notify(`Server ${data.server_name} importiert`, "#228833");
+        const serverEndpoint = data.endpoint;
+        // Refresh server list if relevant
+        if (serverEndpoint) {
+          try {
+            const serverRes = await fetch(`/servers?endpoint=${encodeURIComponent(serverEndpoint)}`);
+            if (serverRes.ok) {
+              const servers = await serverRes.json();
+              if (Array.isArray(servers)) {
+                setServerOptions(servers);
+                if (endpointSelect.value === serverEndpoint && !serverIsRunning) {
+                  enableServerControls();
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Fehler beim Aktualisieren der Serverliste:", err);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Fehler beim Importieren des Servers:", err);
+      notify(`Fehler beim Importieren: ${err.message}`, "#cc0000");
+    }
+  });
+
+  serverImportCancel.addEventListener("click", () => {
+    serverImportModalOverlay.classList.add("hidden");
+  });
+
+  serverImportModalOverlay.addEventListener("click", (e) => {
+    if (e.target === serverImportModalOverlay) {
+      serverImportModalOverlay.classList.add("hidden");
+    }
+  });
+  // ENDE: Server Import Logic
+
   const endpointCreateModalOverlay = document.getElementById("endpointCreateModalOverlay");
   const endpointCreateForm = document.getElementById("endpointCreateForm");
   const endpointCreateCancel = document.getElementById("endpointCreateCancel");
@@ -1789,6 +1925,7 @@
 
   async function loadServerConfig(endpoint, serverName) {
     try {
+      // Weiterhin /server/config verwenden, damit keine Docker-Files geladen werden müssen
       const res = await fetch("/server/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1905,7 +2042,7 @@
         await checkAndEnableStartStop();
         disableConfigure();
         enableDeleteServer();
-        enableMaintenance();
+        // Hier nicht mehr pauschal enableMaintenance() aufrufen, das macht checkAndEnableStartStop() jetzt
       }
       const newestHost = await getNewestHost();
       if (newestHost && newestHost.status === "maintenance") {
@@ -1955,7 +2092,7 @@
           disableConfigure();
           enableDeleteServer();
           enableServerControls();
-          enableMaintenance();
+          // enableMaintenance() wird jetzt durch checkAndEnableStartStop() gesteuert (je nachdem ob installiert)
           await loadServerConfig(endpointSelect.value, serverSelect.value);
         } else {
           enableServerControls();

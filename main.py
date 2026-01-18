@@ -78,7 +78,7 @@ class ConfigUpdateRequest(BaseModel):
 # Serve the HTML page at /
 @app.get("/", response_class=FileResponse)
 async def index():
-  if await sm.local_did_newest_host_upload() and not await sm.process_exists():
+  if (await sm.local_did_newest_host_upload() or await sm.is_container_running()) and not await sm.process_exists():
     return "frontend/failed_upload.html"
   else:
     return "frontend/index.html"
@@ -165,7 +165,7 @@ async def delete_server(data: ServerIdentifier):
 
 @app.post("/server/start")
 async def start_server():
-  config = await sm.get_server_config()
+  # config = await sm.get_server_config()
   if not await sm.did_newest_host_upload():
     return {"error": "server_not_uploaded"}
   elif await sm.process_exists():
@@ -187,7 +187,7 @@ async def containers_exist():
 
 @app.post("/server/prepare_images")
 async def prepare_images():
-  await sm.prepare_images()
+  await sm.prepare_images(forward_to_websockets)
   return {"status": "images_downloaded"}
 
 @app.post("/server/force_stop")
@@ -197,9 +197,17 @@ async def force_stop_server():
   return {"status": "server_force_stopped"}
 
 @app.post("/server/send")
-async def stop_server(data: ServerInput):
+async def send(data: ServerInput):
   await sm.send_input(data.input)
   return {"status": "input_sent"}
+
+@app.post("/server/is_container_running")
+async def is_container_running():
+  return {"running": await sm.is_container_running()}
+
+@app.post("/server/container_cleanup_stop")
+async def container_cleanup_stop():
+  return await sm.container_cleanup_stop(forward_to_websockets)
 
 @app.post("/server/read")
 async def read_total_output():
@@ -278,6 +286,12 @@ async def create_server(data: ServerConfigChangeRequest):
 @app.post("/server/config")
 async def get_server_config():
   config = await sm.get_server_config()
+  return config
+
+@app.post("/server/config_with_docker")
+async def get_server_config():
+  config = await sm.get_server_config()
+  config["docker_compose_file"] = await sm.get_docker_compose_file()
   return config
 
 @app.get("/servers")

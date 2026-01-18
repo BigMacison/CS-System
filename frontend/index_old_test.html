@@ -26,6 +26,7 @@
       display: flex;
       align-items: center;
       margin-bottom: 10px;
+      position: relative;
     }
     select {
       flex: 1;
@@ -58,6 +59,7 @@
       border: none;
       border-radius: 4px;
       cursor: pointer;
+      position: relative;
     }
     .section > button:disabled {
       opacity: 0.5;
@@ -193,6 +195,7 @@
       box-shadow: 0 0 20px #000;
       max-height: 80vh;
       overflow-y: auto;
+      position: relative;
     }
     .hidden {
       display: none;
@@ -214,14 +217,14 @@
       height: 200px;
       resize: vertical;
     }
-    .command-section, .argument-section {
+    .command-section, .argument-section, .env-section {
       border: 1px solid #444;
       padding: 10px;
       margin-bottom: 10px;
       border-radius: 6px;
       background-color: #222;
     }
-    .command-section h4, .argument-section h4 {
+    .command-section h4, .argument-section h4, .env-section h4 {
       margin: 0 0 10px 0;
       color: #aaa;
     }
@@ -262,7 +265,7 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
-    #wsOverlay {
+    #wsOverlay, .loading-overlay {
       position: fixed;
       top: 0;
       left: 0;
@@ -273,10 +276,10 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      z-index: 1500;
+      z-index: 2500;
       pointer-events: all;
     }
-    #wsOverlay.hidden {
+    #wsOverlay.hidden, .loading-overlay.hidden {
       display: none;
     }
     #wsOverlayText {
@@ -291,6 +294,36 @@
       font-size: 24px;
       text-align: center;
     }
+    .loader-container {
+      position: absolute;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1600;
+    }
+    .loader-container.hidden {
+      display: none;
+    }
+    .loader-indeterminate, .loader-determinate {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #555;
+      border-radius: 50%;
+    }
+    .loader-indeterminate {
+      border-top-color: #fff;
+      animation: spin 1s linear infinite;
+    }
+    .loader-determinate {
+      border: 3px solid #555;
+      border-top-color: #fff;
+      border-right-color: #fff;
+      animation: none;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -298,6 +331,10 @@
 <div id="wsOverlay" class="hidden">
   <div id="wsOverlayText">WebSocket connection lost</div>
   <div id="wsOverlaySubtext">reconnecting...</div>
+</div>
+<!-- Loading Overlay for Modals -->
+<div id="modalLoadingOverlay" class="loading-overlay hidden">
+  <div class="loader-indeterminate"></div>
 </div>
 <!-- Sidebar -->
 <div id="sidebar">
@@ -308,9 +345,15 @@
   <div class="dropdown-row">
     <select id="serverSelect"></select>
     <button id="serverAddBtn" class="add-btn" onclick="openServerCreateModal()">+</button>
+    <div id="serverSelectLoader" class="loader-container hidden" style="top: 0; left: 0; right: 30px; height: 100%;">
+      <div class="loader-indeterminate"></div>
+    </div>
   </div>
   <div class="section">
-    <button id="startStopBtn" onclick="onClick('Start/Stop')">Start</button>
+    <button id="startStopBtn" onclick="onClickStartStop()">Start</button>
+    <div id="startStopLoader" class="loader-container hidden" style="top: 0; left: 0; right: 0; bottom: 0;">
+      <div id="startStopLoaderInner" class="loader-indeterminate"></div>
+    </div>
     <button id="configureBtn" onclick="openServerConfigModal()">Configure</button>
   </div>
   <div class="predefined-inputs" id="predefinedInputs"></div>
@@ -337,25 +380,18 @@
   <div class="modal-window">
     <h2>Server konfigurieren</h2>
     <form id="serverConfigForm">
-      <label for="serverConfigStartCmdWin">Start Command (Windows)</label>
-      <input type="text" id="serverConfigStartCmdWin" name="start_cmd_win">
-
-      <label for="serverConfigStartCmdLinux">Start Command (Linux)</label>
-      <input type="text" id="serverConfigStartCmdLinux" name="start_cmd_linux">
-
+      <label for="serverConfigDockerCompose">Docker Compose File</label>
+      <textarea id="serverConfigDockerCompose" name="docker_compose_file" required></textarea>
+      <label for="serverConfigContainerName">Container Name</label>
+      <input type="text" id="serverConfigContainerName" name="container_name" required>
       <label for="serverConfigStopCmd">Stop Command</label>
       <input type="text" id="serverConfigStopCmd" name="stop_cmd">
-
-      <label for="serverConfigPort">Port</label>
-      <input type="number" id="serverConfigPort" name="port" required>
-
-      <label for="serverConfigEnv">Environment (JSON)</label>
-      <textarea id="serverConfigEnv" name="env" placeholder='{"key": "value"}'></textarea>
-
+      <h3>Environment Variables</h3>
+      <div id="serverConfigEnv"></div>
+      <button type="button" class="add-btn-small" onclick="addEnvSection('serverConfigEnv')">+ Environment Variable</button>
       <h3>Commands</h3>
       <div id="serverConfigCommands"></div>
       <button type="button" class="add-btn-small" onclick="addCommandSection('serverConfigCommands')">+ Command</button>
-
       <div style="text-align: right; margin-top: 10px;">
         <button type="button" id="serverConfigCancel" style="margin-right: 10px;">Abbrechen</button>
         <button type="submit" id="serverConfigSubmit">Speichern</button>
@@ -383,29 +419,20 @@
     <form id="serverCreateForm">
       <label for="serverCreateEndpoint">Endpoint</label>
       <select id="serverCreateEndpoint" name="endpoint" required></select>
-
       <label for="serverCreateName">Server Name</label>
       <input type="text" id="serverCreateName" name="server_name" required>
-
-      <label for="serverCreateStartCmdWin">Start Command (Windows)</label>
-      <input type="text" id="serverCreateStartCmdWin" name="start_cmd_win">
-
-      <label for="serverCreateStartCmdLinux">Start Command (Linux)</label>
-      <input type="text" id="serverCreateStartCmdLinux" name="start_cmd_linux">
-
+      <label for="serverCreateDockerCompose">Docker Compose File</label>
+      <textarea id="serverCreateDockerCompose" name="docker_compose_file" required></textarea>
+      <label for="serverCreateContainerName">Container Name</label>
+      <input type="text" id="serverCreateContainerName" name="container_name" required>
       <label for="serverCreateStopCmd">Stop Command</label>
       <input type="text" id="serverCreateStopCmd" name="stop_cmd">
-
-      <label for="serverCreatePort">Port</label>
-      <input type="number" id="serverCreatePort" name="port" required>
-
-      <label for="serverCreateEnv">Environment (JSON)</label>
-      <textarea id="serverCreateEnv" name="env" placeholder='{"key": "value"}'></textarea>
-
+      <h3>Environment Variables</h3>
+      <div id="serverCreateEnv"></div>
+      <button type="button" class="add-btn-small" onclick="addEnvSection('serverCreateEnv')">+ Environment Variable</button>
       <h3>Commands</h3>
       <div id="serverCreateCommands"></div>
       <button type="button" class="add-btn-small" onclick="addCommandSection('serverCreateCommands')">+ Command</button>
-
       <div style="text-align: right; margin-top: 10px;">
         <button type="button" id="serverCreateCancel" style="margin-right: 10px;">Abbrechen</button>
         <button type="submit" id="serverCreateSubmit">Erstellen</button>
@@ -420,7 +447,6 @@
     <form id="endpointCreateForm">
       <label for="endpointCreateConfig">Rclone-Konfiguration für Endpunkte einfügen</label>
       <textarea id="endpointCreateConfig" name="config" placeholder="[meinremote]\ntype = drive\nclient_id = abc\nclient_secret = def" required></textarea>
-
       <div style="text-align: right; margin-top: 10px;">
         <button type="button" id="endpointCreateCancel" style="margin-right: 10px;">Abbrechen</button>
         <button type="submit" id="endpointCreateSubmit">Hinzufügen</button>
@@ -437,11 +463,64 @@
   let maintenanceMode = false;
   let ongoingTransfers = {};
   const wsOverlay = document.getElementById("wsOverlay");
+  const modalLoadingOverlay = document.getElementById("modalLoadingOverlay");
+  const serverSelectLoader = document.getElementById("serverSelectLoader");
+  const startStopLoader = document.getElementById("startStopLoader");
+  const startStopLoaderInner = document.getElementById("startStopLoaderInner");
+
+  function ansiToHtml(text) {
+    const colors = {
+      '30': 'black', '31': 'red', '32': 'green', '33': 'yellow', '34': 'blue',
+      '35': 'magenta', '36': 'cyan', '37': 'white', '39': 'inherit',
+      '40': 'black', '41': 'red', '42': 'green', '43': 'yellow', '44': 'blue',
+      '45': 'magenta', '46': 'cyan', '47': 'white', '49': 'inherit'
+    };
+
+    let html = '';
+    let currentStyle = '';
+
+    text = text.replace(/\u001b\]0;.*?\u0007/g, '');
+    if (text.includes('\u001b[2J')) {
+      terminal.innerHTML = '';
+    }
+    text = text.replace(/\u001b\[2J/g, '');
+    text = text.replace(/\u001b\[H/g, '');
+    text = text.replace(/\r/g, '');
+
+    const parts = text.split(/\u001b\[(\d+;?\d*)m/);
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 0) {
+        html += `<span style="${currentStyle}">${parts[i].replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`;
+      } else {
+        let style = currentStyle;
+        if (parts[i] === '0' || parts[i] === '') {
+          style = '';
+        } else {
+          const codes = parts[i].split(';');
+          codes.forEach(c => {
+            if (c === '39') {
+              style = style.replace(/color: [^;]+;/, '');
+            } else if (c === '49') {
+              style = style.replace(/background-color: [^;]+;/, '');
+            } else if (colors[c]) {
+              if (c >= 30 && c <= 37) {
+                style = style.replace(/color: [^;]+;/, '') + `color: ${colors[c]};`;
+              } else if (c >= 40 && c <= 47) {
+                style = style.replace(/background-color: [^;]+;/, '') + `background-color: ${colors[c]};`;
+              }
+            }
+          });
+        }
+        currentStyle = style;
+      }
+    }
+    return html;
+  }
 
   function addToTerminal(text, autoScroll = false) {
     const atBottom = terminal.scrollTop + terminal.clientHeight >= terminal.scrollHeight - 5;
     const element = document.createElement("div");
-    element.textContent = text;
+    element.innerHTML = ansiToHtml(text);
     terminal.appendChild(element);
     if (autoScroll || atBottom) terminal.scrollTop = terminal.scrollHeight;
   }
@@ -555,12 +634,52 @@
     }
   }
 
+  async function checkContainersExist() {
+    try {
+      const res = await fetch("/server/containers_exist", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const data = await res.json();
+      return data.exist === true;
+    } catch (err) {
+      console.error("Fehler beim Überprüfen der Container:", err);
+      notify(`Fehler beim Überprüfen der Container: ${err.message}`, "#cc0000");
+      return false;
+    }
+  }
+
+  async function prepareImages() {
+    try {
+      // startStopLoader.classList.remove("hidden");
+      notify("Bereite Images vor...", "#228833");
+      const res = await fetch("/server/prepare_images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const data = await res.json();
+      if (data.status !== "images_downloaded") {
+        throw new Error(`Unerwartete Antwort: ${JSON.stringify(data)}`);
+      }
+      notify("Images erfolgreich heruntergeladen", "#228833");
+      return true;
+    } catch (err) {
+      console.error("Fehler beim Vorbereiten der Images:", err);
+      notify(`Fehler beim Vorbereiten der Images: ${err.message}`, "#cc0000");
+      return false;
+    } finally {
+      // startStopLoader.classList.add("hidden");
+    }
+  }
+
   function enterMaintenanceMode() {
     maintenanceMode = true;
     maintenanceBtn.textContent = "Upload";
     enableMaintenanceBtn();
     disableStartStop();
-    disableConfigure();
+    enableConfigure();
     disableDeleteServer();
     disableServerControls();
     disablePredefinedButtons();
@@ -572,8 +691,8 @@
     maintenanceBtn.textContent = "Maintenance";
     if (serverSelect.value && endpointSelect.value) {
       if (!serverIsRunning) {
-        enableStartStop();
-        enableConfigure();
+        checkAndEnableStartStop();
+        disableConfigure();
         enableDeleteServer();
         enableServerControls();
         enableMaintenance();
@@ -582,6 +701,7 @@
     } else {
       enableServerControls();
       enableMaintenance();
+      disableConfigure();
     }
   }
 
@@ -666,9 +786,11 @@
             const message = `${isUpload ? "Upload" : "Download"} gestartet: ${percent}%`;
             const notifId = notify(message, "#228833", true);
             ongoingTransfers[type] = { notifId, percent };
+            // updateStartStopLoader(type, percent);
           } else {
             ongoingTransfers[type].percent = percent;
             updateNotification(ongoingTransfers[type].notifId, `${isUpload ? "Upload" : "Download"} gestartet: ${percent}%`);
+            //updateStartStopLoader(type, percent);
           }
         } else if (data.restic && data.restic.message_type === "summary") {
           const isUpload = "bytes_done" in data.restic || "total_bytes_processed" in data.restic;
@@ -676,6 +798,7 @@
           if (ongoingTransfers[type]) {
             notify(`${isUpload ? "Upload" : "Download"} abgeschlossen`, "#228833");
             delete ongoingTransfers[type];
+            //updateStartStopLoader(type, null);
           }
         }
       } catch (err) {
@@ -699,29 +822,85 @@
     };
   }
 
+  function updateStartStopLoader(type, percent) {
+    if (!startStopBtn.disabled) {
+      startStopLoader.classList.add("hidden");
+      return;
+    }
+    startStopLoader.classList.remove("hidden");
+    if (percent !== null && ongoingTransfers[type]) {
+      startStopLoaderInner.className = "loader-determinate";
+      const angle = percent * 3.6;
+      startStopLoaderInner.style.transform = `rotate(${angle}deg)`;
+      startStopLoaderInner.style.clipPath = percent > 50 ? 'none' : `inset(0 ${100 - percent * 2}% 0 0)`;
+    } else {
+      startStopLoaderInner.className = "loader-indeterminate";
+      startStopLoaderInner.style.transform = 'none';
+      startStopLoaderInner.style.clipPath = 'none';
+    }
+  }
+
   sendBtn.addEventListener("click", async () => {
     const text = input.value.trim();
-    if (text) {
+    addToTerminal(`> ${text}`, true);
+    await sendInputToServer(text);
+    input.value = "";
+  });
+
+  input.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      const text = input.value.trim();
       addToTerminal(`> ${text}`, true);
       await sendInputToServer(text);
       input.value = "";
     }
   });
 
-  input.addEventListener("keydown", async (e) => {
-    if (e.key === "Enter") {
-      const text = input.value.trim();
-      if (text) {
-        addToTerminal(`> ${text}`, true);
-        await sendInputToServer(text);
-        input.value = "";
-      }
-    }
-  });
-
   function onClick(name) {
     addToTerminal(`[Clicked] ${name}`);
     notify(`Aktion ausgeführt: ${name}`, "#4444ff");
+  }
+
+  async function onClickStartStop() {
+    if (startStopBtn.textContent === "Install") {
+      disableStartStop();
+      const success = await prepareImages();
+      if (success) {
+        setStartStopText("Start");
+        setStartStopColor("#228833");
+        enableStartStop();
+      } else {
+        enableStartStop();
+      }
+    } else {
+      disableStartStop();
+      disablePredefinedButtons();
+      disableConfigure();
+      disableDeleteServer();
+      disableMaintenance();
+      disableServerControls();
+
+      if (!serverIsRunning) {
+        const started = await tryStartServer();
+        updateStartStopUI(started);
+      } else {
+        try {
+          const res = await fetch("/server/stop", { method: "POST" });
+          const data = await res.json();
+
+          if (data.status === "server_stopped") {
+            notify("Server gestoppt 🛑", "#228833");
+            updateStartStopUI(false);
+          } else {
+            notify("Fehler beim Stoppen", "#cc0000");
+            updateStartStopUI(true);
+          }
+        } catch (err) {
+          notify("Netzwerkfehler beim Stoppen", "#cc0000");
+          updateStartStopUI(true);
+        }
+      }
+    }
   }
 
   const toast = document.getElementById("notificationToast");
@@ -826,11 +1005,30 @@
   function disableStartStop() {
     startStopBtn.disabled = true;
     startStopBtn.style.opacity = "0.5";
+    // startStopLoader.classList.remove("hidden");
+    // updateStartStopLoader(null, null);
   }
 
   function enableStartStop() {
     startStopBtn.disabled = false;
     startStopBtn.style.opacity = "1";
+    // startStopLoader.classList.add("hidden");
+  }
+
+  async function checkAndEnableStartStop() {
+    if (serverSelect.value && endpointSelect.value) {
+      const containersExist = await checkContainersExist();
+      if (containersExist) {
+        setStartStopText("Start");
+        setStartStopColor("#228833");
+      } else {
+        setStartStopText("Install");
+        setStartStopColor("#663399");
+      }
+      enableStartStop();
+    } else {
+      disableStartStop();
+    }
   }
 
   function enableMaintenanceBtn() {
@@ -844,8 +1042,8 @@
   }
 
   function enableConfigure() {
-    configureBtn.disabled = false;
-    configureBtn.style.opacity = "1";
+    configureBtn.disabled = !maintenanceMode;
+    configureBtn.style.opacity = maintenanceMode ? "1" : "0.5";
   }
 
   function disableServerControls() {
@@ -960,11 +1158,6 @@
     });
   }
 
-  const configModalOverlay = document.getElementById("configModalOverlay");
-  const serverConfigForm = document.getElementById("serverConfigForm");
-  const serverConfigCancel = document.getElementById("serverConfigCancel");
-  const serverConfigCommands = document.getElementById("serverConfigCommands");
-
   function addCommandSection(containerId) {
     const commandSection = document.createElement("div");
     commandSection.className = "command-section";
@@ -1007,12 +1200,31 @@
     argsContainer.appendChild(argSection);
   }
 
+  function addEnvSection(containerId) {
+    const envSection = document.createElement("div");
+    envSection.className = "env-section";
+    envSection.innerHTML = `
+      <h4>Environment Variable</h4>
+      <label for="env-name">Name</label>
+      <input type="text" name="env-name" required>
+      <label for="env-value">Value</label>
+      <input type="text" name="env-value" required>
+      <button type="button" class="remove-btn" onclick="this.parentElement.remove()">Entfernen</button>
+    `;
+    document.getElementById(containerId).appendChild(envSection);
+  }
+
   async function openServerConfigModal() {
     const selectedServer = serverSelect.value;
     const selectedEndpoint = endpointSelect.value;
 
     if (!selectedServer || !selectedEndpoint) {
       notify("Bitte wählen Sie einen Server aus", "#cc0000");
+      return;
+    }
+
+    if (!maintenanceMode) {
+      notify("Konfiguration ist nur im Wartungsmodus möglich", "#cc0000");
       return;
     }
 
@@ -1030,11 +1242,20 @@
       const config = await res.json();
       if (config.error) throw new Error(config.error);
 
-      document.getElementById("serverConfigStartCmdWin").value = config.start_cmd_win || "";
-      document.getElementById("serverConfigStartCmdLinux").value = config.start_cmd_linux || "";
+      document.getElementById("serverConfigDockerCompose").value = config.docker_compose_file || "";
+      document.getElementById("serverConfigContainerName").value = config.container_name || "";
       document.getElementById("serverConfigStopCmd").value = config.stop_cmd || "";
-      document.getElementById("serverConfigPort").value = config.forward_port || "";
-      document.getElementById("serverConfigEnv").value = config.env ? JSON.stringify(config.env, null, 2) : "";
+
+      const envContainer = document.getElementById("serverConfigEnv");
+      envContainer.innerHTML = "";
+      if (config.env) {
+        Object.entries(config.env).forEach(([name, value]) => {
+          addEnvSection("serverConfigEnv");
+          const section = envContainer.lastChild;
+          section.querySelector("[name='env-name']").value = name;
+          section.querySelector("[name='env-value']").value = value;
+        });
+      }
 
       serverConfigCommands.innerHTML = "";
       (config.commands || []).forEach(cmd => {
@@ -1066,20 +1287,29 @@
       return;
     }
 
+    // modalLoadingOverlay.classList.remove("hidden");
+    serverConfigForm.style.pointerEvents = "none";
+
     const selectedServer = serverSelect.value;
     const selectedEndpoint = endpointSelect.value;
 
     const formData = new FormData(serverConfigForm);
     const data = {
-      server_name: selectedServer,
-      endpoint: selectedEndpoint,
-      start_cmd_win: formData.get("start_cmd_win") || "",
-      start_cmd_linux: formData.get("start_cmd_linux") || "",
+      docker_compose_file: formData.get("docker_compose_file") || "",
+      container_name: formData.get("container_name") || "",
       stop_cmd: formData.get("stop_cmd") || "",
-      forward_port: parseInt(formData.get("port")),
-      env: formData.get("env") ? JSON.parse(formData.get("env")) : {},
+      env: {},
       commands: []
     };
+
+    const envSections = document.getElementById("serverConfigEnv").querySelectorAll(".env-section");
+    envSections.forEach(section => {
+      const name = section.querySelector("[name='env-name']").value;
+      const value = section.querySelector("[name='env-value']").value;
+      if (name && value) {
+        data.env[name] = value;
+      }
+    });
 
     const commandSections = serverConfigCommands.querySelectorAll(".command-section");
     commandSections.forEach(section => {
@@ -1108,16 +1338,20 @@
       });
       if (!res.ok) throw new Error(`HTTP Status ${res.status}`);
       const result = await res.json();
-      if (result.error) {
-        notify(`Fehler beim Speichern der Konfiguration: ${result.error}`, "#cc0000");
+      if (result.status !== "changed_config") {
+        notify(`Fehler beim Speichern der Konfiguration: ${result.error || "Unbekannter Fehler"}`, "#cc0000");
       } else {
         configModalOverlay.classList.add("hidden");
         notify(`Serverkonfiguration für ${selectedServer} gespeichert`, "#228833");
         setPredefinedButtons(data.commands);
+        await checkAndEnableStartStop();
       }
     } catch (err) {
       console.error("Fehler beim Speichern der Serverkonfiguration:", err);
       notify(`Fehler beim Speichern der Konfiguration: ${err.message}`, "#cc0000");
+    } finally {
+      // modalLoadingOverlay.classList.add("hidden");
+      serverConfigForm.style.pointerEvents = "auto";
     }
   });
 
@@ -1228,6 +1462,7 @@
     fetchEndpointsForServerCreate();
     serverCreateForm.reset();
     serverCreateCommands.innerHTML = "";
+    document.getElementById("serverCreateEnv").innerHTML = "";
     serverCreateModalOverlay.classList.remove("hidden");
   }
 
@@ -1268,17 +1503,28 @@
       return;
     }
 
+    // modalLoadingOverlay.classList.remove("hidden");
+    serverCreateForm.style.pointerEvents = "none";
+
     const formData = new FormData(serverCreateForm);
     const data = {
       server_name: formData.get("server_name"),
       endpoint: formData.get("endpoint"),
-      start_cmd_win: formData.get("start_cmd_win") || "",
-      start_cmd_linux: formData.get("start_cmd_linux") || "",
+      docker_compose_file: formData.get("docker_compose_file") || "",
+      container_name: formData.get("container_name") || "",
       stop_cmd: formData.get("stop_cmd") || "",
-      forward_port: parseInt(formData.get("port")),
-      env: formData.get("env") ? JSON.parse(formData.get("env")) : {},
+      env: {},
       commands: []
     };
+
+    const envSections = document.getElementById("serverCreateEnv").querySelectorAll(".env-section");
+    envSections.forEach(section => {
+      const name = section.querySelector("[name='env-name']").value;
+      const value = section.querySelector("[name='env-value']").value;
+      if (name && value) {
+        data.env[name] = value;
+      }
+    });
 
     const commandSections = serverCreateCommands.querySelectorAll(".command-section");
     commandSections.forEach(section => {
@@ -1307,8 +1553,8 @@
       });
       if (!res.ok) throw new Error(`HTTP Status ${res.status}`);
       const result = await res.json();
-      if (result.error) {
-        notify(`Fehler beim Erstellen des Servers: ${result.error}`, "#cc0000");
+      if (result.status !== "server_created") {
+        notify(`Fehler beim Erstellen des Servers: ${result.error || "Unbekannter Fehler"}`, "#cc0000");
       } else {
         serverCreateModalOverlay.classList.add("hidden");
         notify(`Server ${data.server_name} erstellt`, "#228833");
@@ -1338,6 +1584,9 @@
     } catch (err) {
       console.error("Fehler beim Erstellen des Servers:", err);
       notify(`Fehler beim Erstellen des Servers: ${err.message || "Unbekannter Fehler"}`, "#cc0000");
+    } finally {
+      // modalLoadingOverlay.classList.add("hidden");
+      serverCreateForm.style.pointerEvents = "auto";
     }
   });
 
@@ -1489,6 +1738,7 @@
         endpointSelect.value = config.endpoint;
         if (config.server_name) {
           try {
+            serverSelectLoader.classList.remove("hidden");
             const serverRes = await fetch(`/servers?endpoint=${encodeURIComponent(config.endpoint)}`);
             if (!serverRes.ok) throw new Error(`Status ${serverRes.status}`);
             const servers = await serverRes.json();
@@ -1512,6 +1762,8 @@
           } catch (err) {
             console.error("Fehler beim Laden der Server:", err);
             notify("Fehler beim Laden der Server", "#cc0000");
+          } finally {
+            serverSelectLoader.classList.add("hidden");
           }
         }
       }
@@ -1519,10 +1771,10 @@
       if (!serverIsRunning && !maintenanceMode) {
         enableServerControls();
         if (config.endpoint && config.server_name) {
-          enableConfigure();
           enableDeleteServer();
-          enableStartStop();
+          await checkAndEnableStartStop();
           enableMaintenance();
+          disableConfigure();
         }
       }
     } catch (err) {
@@ -1574,6 +1826,7 @@
     }
 
     try {
+      serverSelectLoader.classList.remove("hidden");
       const res = await fetch(`/servers?endpoint=${encodeURIComponent(selectedEndpoint)}`);
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const servers = await res.json();
@@ -1610,6 +1863,8 @@
       disableConfigure();
       disableDeleteServer();
       disableMaintenance();
+    } finally {
+      serverSelectLoader.classList.add("hidden");
     }
   });
 
@@ -1647,8 +1902,8 @@
       await loadServerConfig(selectedEndpoint, selectedServer);
 
       if (!serverIsRunning && !maintenanceMode) {
-        enableStartStop();
-        enableConfigure();
+        await checkAndEnableStartStop();
+        disableConfigure();
         enableDeleteServer();
         enableMaintenance();
       }
@@ -1677,8 +1932,12 @@
 
   async function updateStartStopUI(running) {
     serverIsRunning = running;
-    startStopBtn.textContent = running ? "Stop" : "Start";
-    startStopBtn.style.backgroundColor = running ? "#cc0000" : "#228833";
+    if (running) {
+      setStartStopText("Stop");
+      setStartStopColor("#cc0000");
+    } else {
+      await checkAndEnableStartStop();
+    }
     if (!maintenanceMode) {
       enableStartStop();
       if (running) {
@@ -1693,7 +1952,7 @@
       } else {
         disablePredefinedButtons();
         if (serverSelect.value && endpointSelect.value) {
-          enableConfigure();
+          disableConfigure();
           enableDeleteServer();
           enableServerControls();
           enableMaintenance();
@@ -1701,40 +1960,11 @@
         } else {
           enableServerControls();
           enableMaintenance();
+          disableConfigure();
         }
       }
     }
   }
-
-  startStopBtn.addEventListener("click", async () => {
-    disableStartStop();
-    disablePredefinedButtons();
-    disableConfigure();
-    disableDeleteServer();
-    disableMaintenance();
-    disableServerControls();
-
-    if (!serverIsRunning) {
-      const started = await tryStartServer();
-      updateStartStopUI(started);
-    } else {
-      try {
-        const res = await fetch("/server/stop", { method: "POST" });
-        const data = await res.json();
-
-        if (data.status === "server_stopped") {
-          notify("Server gestoppt 🛑", "#228833");
-          updateStartStopUI(false);
-        } else {
-          notify("Fehler beim Stoppen", "#cc0000");
-          updateStartStopUI(true);
-        }
-      } catch (err) {
-        notify("Netzwerkfehler beim Stoppen", "#cc0000");
-        updateStartStopUI(true);
-      }
-    }
-  });
 
   async function initialize() {
     console.log("Initializing application");
